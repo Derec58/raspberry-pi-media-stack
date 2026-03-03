@@ -1,40 +1,119 @@
-Raspberry Pi Media Stack (Docker + Jellyfin)
+# Raspberry Pi Media Stack (Docker + Jellyfin)
 
-This repository documents my Raspberry Pi media automation stack built using Docker, a VPN gateway, and Jellyfin.
+This repository documents my Raspberry Pi media automation stack built using Docker, a VPN gateway, and Jellyfin on a Raspberry Pi that I purchased on a whim.
 
-The goal of this project is to create a reproducible, secure, and modular self-hosted media system.
+The goal of this project is to create a reproducible, secure, and modular self hosted media system while continuing to learn and enjoy the process.
 
-Architecture Overview
+---
+
+<br>
+
+# Table of Contents
+
+- [Project Background](#project-background)
+- [System Architecture Overview](#system-architecture-overview)
+- [Architecture Diagram](#architecture-diagram)
+- [Networking Architecture](#networking-architecture-deep-dive)
+- [Public Access Configuration](#public-access-configuration-duckdns--caddy)
+- [Storage Architecture](#storage-architecture-deep)
+- [Deep Debugging Example](#deep-debugging-example)
+- [Rebuild From Scratch](#rebuild-from-scratch-full-deployment-guide)
+- [Known Limitations](#known-limitations)
+- [Failure Modes & Risk Awareness](#failure-modes--risk-awareness)
+- [Operational Awareness](#operational-awareness)
+- [Tech Stack](#tech-stack)
+- [Lessons Learned](#lessons-learned)
+- [Future Roadmap](#future-roadmap)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
+
+---
+
+<br>
+
+## Project Background
+
+This project represents my first deep dive into self hosted infrastructure, containerization, and service orchestration.
+
+My professional background is in **Product Design**, with hands on experience in HTML, CSS, Python, C++, and Java (Processing). But, I had no experience in systems administration, networking, virtualization, or IT infrastructure prior to putting this stack together. Other than some limited residential IT support I do at home for myself and others.
+
+At the beginning, the objective was simple: set up a personal media server.
+
+Very quickly, that objective expanded into unfamiliar territory. I found myself learning Docker networking, VPN routing, firewall behavior, volume mappings, container dependencies, Linux services, and infrastructure documentation. I initially assumed this would be a straightforward process where I could follow a guide and execute a few commands. That assumption did not last long.
+
+There were moments of confusion, extended debugging sessions, and periods where I stepped away to reset. Even setting up the Raspberry Pi for the first time required patience and significant trial and error. Understanding why containers could not access shared directories required deeper research and troubleshooting. Diagnosing port conflicts, VPN routing behavior, and Docker networking patterns required thinking in ways that were different from front end or design workflows.
+
+This project challenged me technically in ways I had not previously experienced.
+
+At the same time, it reinforced something important. I genuinely enjoy building systems. I have wanted to create a self hosted media environment for years after seeing friends build their own servers. Completing this stack represents a meaningful milestone that reflects persistence, discipline, and measurable technical growth.
+
+Most importantly, I learned a tremendous amount and genuinely enjoyed building it.
+
+---
+
+<br>
+
+## System Architecture Overview
+
+The stack operates across two layers:
+
+1. Native service layer (Jellyfin)
+2. Docker-managed automation layer
+
+Hardware:
+- Raspberry Pi 5 (8GB RAM)
+- 6TB external HDD mounted at `/mnt/jellyfin`
+
+Logical flow:
+
+User → Jellyfin → Media Storage  
+User Request → Jellyseerr → Sonarr/Radarr → Prowlarr → qBittorrent → Storage → Jellyfin
+
+Each service has a clearly defined responsibility.
+
+---
+
+<br>
+
+## Architecture Diagram
+
+```mermaid
 flowchart TB
-  U[User Devices<br/>TV / Phone / PC] -->|LAN| R[Home Router]
-  R --> PI[Raspberry Pi Server]
+  U["User Devices\nTV / Phone / PC"] -->|LAN or HTTPS| R["Home Router"]
+  R --> PI["Raspberry Pi 5"]
 
-  subgraph STORAGE[External Media Drive]
-    DRV[/dev/sdb1<br/>/mnt/jellyfin/]
-    DL[/downloads/]
-    MOV[/Movies/]
-    TV[/TV Shows/]
-    AN[/Anime/]
+  subgraph STORAGE["External Media Drive"]
+    DRV["/mnt/jellyfin"]
+    DL["downloads/"]
+    MOV["Movies/"]
+    TV["TV Shows/"]
+    AN["Anime/"]
     DRV --> DL
     DRV --> MOV
     DRV --> TV
     DRV --> AN
   end
 
-  subgraph NATIVE[Jellyfin (Native Service)]
-    JF[Jellyfin<br/>Port 8096]
+  subgraph PUBLIC["Public Access Layer"]
+    DDNS["DuckDNS"]
+    RP["Caddy Reverse Proxy\nPorts 80/443"]
+    DDNS --> RP
   end
 
-  subgraph DOCKER[Docker Media Stack]
-    JS[Jellyseerr<br/>5055]
-    SO[Sonarr<br/>8989]
-    RA[Radarr<br/>7878]
-    PR[Prowlarr<br/>9696]
-    BZ[Bazarr<br/>6767]
+  subgraph NATIVE["Native Service"]
+    JF["Jellyfin\nPort 8096"]
+  end
 
-    subgraph VPN[Gluetun VPN Gateway]
-      GL[Gluetun<br/>Firewall ON]
-      QB[qBittorrent<br/>8080 / 6881]
+  subgraph DOCKER["Docker Media Stack"]
+    JS["Jellyseerr"]
+    SO["Sonarr"]
+    RA["Radarr"]
+    PR["Prowlarr"]
+    BZ["Bazarr"]
+
+    subgraph VPN["Gluetun VPN Namespace"]
+      GL["Gluetun"]
+      QB["qBittorrent\nnetwork_mode: service:gluetun"]
       GL --> QB
     end
 
@@ -51,211 +130,330 @@ flowchart TB
     BZ --> AN
   end
 
-  U -->|http://pi:8096| JF
+  RP --> JF
+  U --> JF
   JF --> MOV
   JF --> TV
   JF --> AN
-What Runs Where
-Native Service
+```
 
-Jellyfin
+---
 
-Runs via systemd
+<br>
 
-Port: 8096
+## Networking Architecture (Deep Dive)
 
-Reads media directly from /mnt/jellyfin
+Docker normally assigns containers individual network namespaces.
 
-Docker Stack
+However:
 
-Compose project located at:
+```
+network_mode: "service:gluetun"
+```
 
-/home/korn/media-stack
+This forces qBittorrent to share Gluetun’s network stack.
 
-Services:
+Result:
 
-Gluetun – VPN gateway with firewall
+- qBittorrent cannot access the internet without VPN
+- If VPN drops, torrent traffic stops
+- No IP leakage occurs
+- This is fail-closed enforcement
 
-qBittorrent – Routed through Gluetun
+Only ports 80 and 443 are exposed publicly.
 
-Prowlarr – Indexer manager
+Automation services remain LAN-restricted.
 
-Sonarr – TV automation
+---
 
-Radarr – Movie automation
+<br>
 
-Bazarr – Subtitle management
+## Public Access Configuration (DuckDNS + Caddy)
 
-Jellyseerr – User request interface
+DuckDNS:
+- Provides persistent subdomain
+- Updates dynamic IP automatically
 
-Ports (LAN Access)
-Service	Port
-Jellyfin	8096
-Jellyseerr	5055
-Sonarr	8989
-Radarr	7878
-Prowlarr	9696
-Bazarr	6767
-qBittorrent	8080
-Torrent Port	6881 TCP/UDP
-Storage Layout (Host)
+Caddy:
+- Issues HTTPS certificates via Let's Encrypt
+- Handles TLS termination
+- Forwards traffic internally to Jellyfin
 
-Mounted media drive:
+Flow:
 
+Internet  
+↓  
+Router (80/443)  
+↓  
+Caddy  
+↓  
+Jellyfin:8096  
+
+Only Jellyfin is public.
+
+---
+
+<br>
+
+## Storage Architecture (Deep)
+
+All media stored at:
+
+```
 /mnt/jellyfin
+```
 
 Structure:
 
-/mnt/jellyfin/
-├── downloads/
-├── Movies/
-├── TV Shows/
-└── Anime/
+```
+downloads/
+Movies/
+TV Shows/
+Anime/
+```
 
-Inside containers this path is mounted as:
+All containers bind:
 
-/data
-
-This ensures all services operate on the same file structure.
-
-Why This Architecture?
-1. Separation of Responsibilities
-
-Each service has a single purpose:
-
-Sonarr/Radarr → automation & organization
-
-Prowlarr → indexer abstraction layer
-
-qBittorrent → downloading only
-
-Bazarr → subtitles only
-
-Jellyfin → streaming only
-
-This makes debugging easier and prevents cascading failures.
-
-2. Consistent Volume Mapping
-
-All media containers bind:
-
+```
 /mnt/jellyfin → /data
+```
 
 This prevents:
 
-Path mismatches
+- Path mismatches
+- Duplicate storage
+- Hardlink failures
+- Import issues
 
-Import failures
+Volume consistency is critical for automation reliability.
 
-Hardlink issues
+---
 
-Media duplication
+<br>
 
-3. Infrastructure as Code
+## Deep Debugging Example
 
-The entire stack is defined in:
+Media downloads succeeded but imports failed.
 
-docker-compose.yml
+Cause:
+Inconsistent container bind mounts created path mismatches.
 
-This allows:
+Fix:
+Standardized `/mnt/jellyfin → /data` across all services.
 
-Full rebuilds
+Lesson:
+System health requires tracing interactions between containers.
 
-Easy migration
+---
 
-Version control
+<br>
 
-Portable deployment
+## Rebuild From Scratch (Full Deployment Guide)
 
-Security Considerations
-VPN Enforcement
+### 1. Install Raspberry Pi OS (64-bit)
 
-qBittorrent is forced through Gluetun using:
+```bash
+sudo apt update
+sudo apt upgrade -y
+```
 
-network_mode: "service:gluetun"
+---
 
-This means:
+### 2. Install Docker
 
-qBittorrent shares Gluetun’s network namespace
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+```
 
-It cannot bypass the VPN
+Log out/in.
 
-If Gluetun fails, torrent traffic stops
+Verify:
 
-Firewall Protection
+```bash
+docker --version
+docker compose version
+```
 
-Gluetun is configured with:
+---
 
-FIREWALL=on
+### 3. Clone Repository
 
-Explicit inbound ports (8080, 6881)
+```bash
+git clone https://github.com/YOUR_USERNAME/raspberry-pi-media-stack.git
+cd raspberry-pi-media-stack
+```
 
-Restricted outbound LAN subnet (192.168.0.0/16)
+---
 
-Only necessary ports are exposed.
+### 4. Configure .env
 
-Secret Management
+```bash
+cp .env.example .env
+nano .env
+```
 
-The repository excludes:
+Set:
+- PUID (match `id`)
+- PGID
+- TZ
+- VPN credentials
 
-.env
+---
 
-vpn/
+### 5. Add VPN Configuration
 
-config/
+Download `.ovpn` file from VPN provider.
 
-Only .env.example is committed.
+Place inside:
 
-Quick Start
-
-Copy .env.example → .env
-
-Add your OpenVPN config to:
-
+```
 vpn/custom.ovpn
+```
 
-Start the stack:
+This file contains:
+- VPN server endpoints
+- Encryption settings
+- Certificate data
 
+Without this, Gluetun cannot connect.
+
+---
+
+### 6. Mount Storage
+
+```bash
+lsblk
+sudo mkdir -p /mnt/jellyfin
+sudo mount /dev/sdb1 /mnt/jellyfin
+```
+
+Add to `/etc/fstab`.
+
+Set ownership:
+
+```bash
+sudo chown -R 1000:1000 /mnt/jellyfin
+```
+
+---
+
+### 7. Start Stack
+
+```bash
 docker compose up -d
-Future Roadmap
-Migrate Jellyfin to Docker
+```
 
-Replace native service with linuxserver/jellyfin
+Verify:
 
-Unify entire stack under Docker
+```bash
+docker ps
+```
 
-Simplify backup strategy
+---
 
-Move to Proxmox (Mini PC)
+<br>
 
-Run stack inside VM or LXC
+## Known Limitations
 
-Add ZFS or RAID storage
+- Single node
+- No RAID
+- No off-site backup
+- No monitoring
+- No container resource limits
 
-Improve performance & scalability
+---
 
-Backups & Disaster Recovery
+<br>
 
-Automated backup of:
+## Failure Modes & Risk Awareness
 
-docker-compose.yml
+Risks:
+- HDD failure
+- VPN crash
+- Router misconfiguration
+- TLS expiration
 
-.env
+Future mitigation:
+- RAID/ZFS
+- Monitoring
+- Backup replication
 
-config/
+---
 
-Jellyfin metadata
+<br>
 
-Scheduled rsync to secondary storage
+## Operational Awareness
 
-Monitoring & Alerts
+Hardware:
+- Raspberry Pi 5 (8GB RAM)
+- 6TB HDD
 
-Add Uptime Kuma
+Add real metrics here if desired.
 
-Disk usage monitoring
+---
 
-Container health checks
+<br>
 
-License
+## Tech Stack
 
-Personal infrastructure project for educational and self-hosting purposes.
+Hardware:
+- Raspberry Pi 5
+- 6TB HDD
+
+Software:
+- Raspberry Pi OS
+- Docker
+- Docker Compose
+- Jellyfin
+- Sonarr
+- Radarr
+- Prowlarr
+- Bazarr
+- Jellyseerr
+- qBittorrent
+- Gluetun
+- Caddy
+- DuckDNS
+
+---
+
+<br>
+
+## Lessons Learned
+
+Infrastructure requires systems thinking.
+
+Debugging requires tracing interactions.
+
+Security must be intentional.
+
+Growth happens through discomfort.
+
+---
+
+<br>
+
+## Future Roadmap
+
+- Migrate Jellyfin to Docker
+- Deploy Proxmox
+- Implement RAID/ZFS
+- Add Immich, Paperless-ngx, Home Assistant
+- Add monitoring & backup automation
+
+---
+
+<br>
+
+## Acknowledgments
+
+This project stands on the support of peers and the open source community.
+
+---
+
+<br>
+
+## License
+
+MIT License — educational and homelab use.
