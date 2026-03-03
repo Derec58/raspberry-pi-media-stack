@@ -1,0 +1,121 @@
+version: "3.9"
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TZ=${TZ}
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=openvpn
+      - OPENVPN_CUSTOM_CONFIG=/gluetun/custom/custom.ovpn
+      - OPENVPN_CUSTOM_CONFIG_ONLY=true
+      - OPENVPN_USER=${CG_OPENVPN_USER}
+      - OPENVPN_PASSWORD=${CG_OPENVPN_PASS}
+      - DOT=off
+      - BLOCK_MALICIOUS=off
+      - BLOCK_SURVEILLANCE=off
+      - FIREWALL_INPUT_PORTS=8080,6881
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/16
+      - FIREWALL=on
+      - FIREWALL_VPN_INPUT_PORTS=6881
+    volumes:
+      - ./config/gluetun:/gluetun
+      - ./vpn:/gluetun/custom
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+      - UMASK=002
+    volumes:
+      - ./config/qbittorrent:/config
+      - /mnt/jellyfin:/data
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/sonarr:/config
+      - /mnt/jellyfin:/data
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/radarr:/config
+      - /mnt/jellyfin:/data
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/jellyseerr:/app/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/bazarr:/config
+      - "/mnt/jellyfin/Movies:/movies"
+      - "/mnt/jellyfin/TV Shows:/tv"
+      - "/mnt/jellyfin/Anime:/anime"
+      - /mnt/jellyfin:/data
+    ports:
+      - 6767:6767
+    restart: unless-stopped
