@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# VPN files (often contain sensitive info)
+vpn/
+*.ovpn
+
+# App configs / databases (do not commit)
+config/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+*.log
+
+# Optional: docker override files
+docker-compose.override.yml
