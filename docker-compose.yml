@@ -1,6 +1,9 @@
 version: "3.9"
-
 services:
+
+  # ─────────────────────────────────────────────
+  # VPN GATEWAY — all torrent traffic routes through here
+  # ─────────────────────────────────────────────
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
@@ -30,6 +33,9 @@ services:
       - 6881:6881/udp
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # TORRENT CLIENT — shares Gluetun's network namespace
+  # ─────────────────────────────────────────────
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
@@ -47,6 +53,23 @@ services:
       - /mnt/jellyfin:/data
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # CLOUDFLARE BYPASS — required for Cloudflare-protected indexers
+  # Prowlarr talks to this automatically when an indexer needs it
+  # ─────────────────────────────────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # INDEXER MANAGER — distributes indexers to all *arr services
+  # ─────────────────────────────────────────────
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -61,6 +84,9 @@ services:
       - 9696:9696
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # TV AUTOMATION
+  # ─────────────────────────────────────────────
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
@@ -76,6 +102,9 @@ services:
       - 8989:8989
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # MOVIE AUTOMATION
+  # ─────────────────────────────────────────────
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
@@ -91,6 +120,9 @@ services:
       - 7878:7878
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # MEDIA REQUEST PORTAL
+  # ─────────────────────────────────────────────
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
@@ -102,6 +134,9 @@ services:
       - 5055:5055
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────
+  # SUBTITLE MANAGER
+  # ─────────────────────────────────────────────
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
@@ -118,4 +153,93 @@ services:
       - /mnt/jellyfin:/data
     ports:
       - 6767:6767
+    restart: unless-stopped
+
+  # ═════════════════════════════════════════════
+  # LITERATURE STACK
+  # ═════════════════════════════════════════════
+
+  # EBOOK + AUDIOBOOK AUTOMATION
+  # Community replacement for Readarr (which was officially retired in 2025).
+  # Same port and API as Readarr. Use tag 'softcover' for Goodreads metadata
+  # or 'hardcover' for Hardcover.app metadata (higher quality, newer service).
+  # Connects to Prowlarr for indexers, qBittorrent for downloads.
+  bookshelf:
+    image: ghcr.io/pennydreadful/bookshelf:softcover
+    container_name: bookshelf
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/bookshelf:/config
+      - /mnt/jellyfin:/data
+    ports:
+      - 8787:8787
+    restart: unless-stopped
+
+  # COMIC + MANGA + MAGAZINE AUTOMATION
+  # Equivalent of Sonarr/Radarr for comics and periodicals.
+  # Connects to Prowlarr for indexers, qBittorrent for downloads.
+  mylar3:
+    image: lscr.io/linuxserver/mylar3:latest
+    container_name: mylar3
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ./config/mylar3:/config
+      - /mnt/jellyfin:/data
+    ports:
+      - 8090:8090
+    restart: unless-stopped
+
+  # AUDIOBOOK SERVER + MOBILE APP BACKEND
+  # Has a first-party iOS/Android app. Also handles podcasts.
+  # Does NOT use PUID/PGID — manages permissions internally.
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - /mnt/jellyfin/Audiobooks:/audiobooks
+      - /mnt/jellyfin/Books:/ebooks
+      - ./config/audiobookshelf:/config
+      - ./config/audiobookshelf/metadata:/metadata
+    ports:
+      - 13378:80
+    restart: unless-stopped
+
+  # EBOOK + COMIC + MANGA READING SERVER
+  # Unified reader for all visual/text content. Supports OPDS
+  # (allows any e-reader app to connect if you get a device later).
+  # Does NOT use PUID/PGID — manages permissions internally.
+  kavita:
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - /mnt/jellyfin/Books:/books
+      - /mnt/jellyfin/Comics:/comics
+      - /mnt/jellyfin/Magazines:/magazines
+      - ./config/kavita:/kavita/config
+    ports:
+      - 5000:5000
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # REVERSE PROXY — routes external traffic to internal services
+  # ─────────────────────────────────────────────
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    network_mode: host
+    volumes:
+      - ./config/npm/data:/data
+      - ./config/npm/letsencrypt:/etc/letsencrypt
     restart: unless-stopped
