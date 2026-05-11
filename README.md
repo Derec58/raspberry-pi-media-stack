@@ -14,7 +14,7 @@ The goal of this project is to create a reproducible, secure, and modular self h
 - [System Architecture Overview](#system-architecture-overview)
 - [Architecture Diagram](#architecture-diagram)
 - [Networking Architecture](#networking-architecture-deep-dive)
-- [Public Access Configuration](#public-access-configuration-duckdns--caddy)
+- [Public Access Configuration](#public-access-configuration-duckdns--nginx-proxy-manager)
 - [Storage Architecture](#storage-architecture-deep)
 - [Literature Stack](#literature-stack)
 - [Deep Debugging Example](#deep-debugging-example)
@@ -83,6 +83,7 @@ Each service has a clearly defined responsibility.
 flowchart TB
   U["User Devices\nTV / Phone / PC"] -->|LAN or HTTPS| R["Home Router"]
   R --> PI["Raspberry Pi 5"]
+  R -->|HTTPS 80/443| RP
 
   subgraph STORAGE["External Media Drive"]
     DRV["/mnt/jellyfin"]
@@ -244,18 +245,23 @@ Comics/
 Magazines/
 ```
 
-All containers bind:
+Media automation containers (Sonarr, Radarr, Bazarr, Bookshelf, Mylar3, qBittorrent) bind the full drive:
 
 ```
 /mnt/jellyfin → /data
 ```
 
-This prevents:
+This prevents path mismatches, duplicate storage, hardlink failures, and import issues.
 
-- Path mismatches
-- Duplicate storage
-- Hardlink failures
-- Import issues
+Reading/serving containers (Audiobookshelf, Kavita) bind individual subdirectories instead:
+
+```
+/mnt/jellyfin/Audiobooks → /audiobooks
+/mnt/jellyfin/Books      → /ebooks  (Audiobookshelf)
+/mnt/jellyfin/Books      → /books   (Kavita)
+/mnt/jellyfin/Comics     → /comics
+/mnt/jellyfin/Magazines  → /magazines
+```
 
 Volume consistency is critical for automation reliability.
 
@@ -344,7 +350,18 @@ docker compose version
 
 ---
 
-### 3. Clone Repository
+### 3. Install Jellyfin (native service, not Docker)
+
+```bash
+curl https://repo.jellyfin.org/install-debuntu.sh | sudo bash
+sudo systemctl enable --now jellyfin
+```
+
+Jellyfin runs as a systemd service on port 8096. It is intentionally kept outside Docker so it has direct access to hardware (GPU/NPU) for transcoding.
+
+---
+
+### 4. Clone Repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/raspberry-pi-media-stack.git
@@ -353,7 +370,7 @@ cd raspberry-pi-media-stack
 
 ---
 
-### 4. Configure .env
+### 5. Configure .env
 
 ```bash
 cp .env.example .env
@@ -368,7 +385,7 @@ Set:
 
 ---
 
-### 5. Add VPN Configuration
+### 6. Add VPN Configuration
 
 Download `.ovpn` file from VPN provider.
 
@@ -387,7 +404,7 @@ Without this, Gluetun cannot connect.
 
 ---
 
-### 6. Mount Storage
+### 7. Mount Storage
 
 ```bash
 lsblk
@@ -405,7 +422,7 @@ sudo chown -R 1000:1000 /mnt/jellyfin
 
 ---
 
-### 6b. Set Up Literature Directories (if using Literature Stack)
+### 7b. Set Up Literature Directories (if using Literature Stack)
 
 ```bash
 bash setup-literature.sh
@@ -415,7 +432,7 @@ Creates Books, Audiobooks, Comics, Magazines, and literature download folders un
 
 ---
 
-### 7. Start Stack
+### 8. Start Stack
 
 ```bash
 docker compose up -d
