@@ -1,83 +1,80 @@
-# Raspberry Pi Media Stack (Docker + Jellyfin)
+# Raspberry Pi Media Stack
 
-This repository documents my Raspberry Pi media automation stack built using Docker, a VPN gateway, and Jellyfin on a Raspberry Pi that I purchased on a whim.
+> A fully automated, VPN-gated self-hosted media system running on a Raspberry Pi 5. Movies, TV, anime, books, comics, and audiobooks — searched, downloaded, organized, and served automatically.
 
-The goal of this project is to create a reproducible, secure, and modular self hosted media system while continuing to learn and enjoy the process.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-arm64%20%7C%20Raspberry%20Pi%205-red)](#hardware)
+[![Last Commit](https://img.shields.io/github/last-commit/Derec58/raspberry-pi-media-stack)](https://github.com/Derec58/raspberry-pi-media-stack/commits/main)
+[![Services](https://img.shields.io/badge/services-13%20containers-blue)](#stack)
 
 ---
 
-<br>
+## Table of Contents
 
-# Table of Contents
-
-- [Project Background](#project-background)
-- [System Architecture Overview](#system-architecture-overview)
-- [Architecture Diagram](#architecture-diagram)
-- [Networking Architecture](#networking-architecture-deep-dive)
-- [Public Access Configuration](#public-access-configuration-duckdns--nginx-proxy-manager)
-- [Storage Architecture](#storage-architecture-deep)
+- [Overview](#overview)
+- [Stack](#stack)
+- [Architecture](#architecture)
+  - [Diagram](#architecture-diagram)
+  - [Networking](#networking)
+  - [Storage](#storage)
+  - [Public Access](#public-access)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Deployment](#deployment)
+- [Configuration](#configuration)
 - [Literature Stack](#literature-stack)
-- [Deep Debugging Example](#deep-debugging-example)
-- [Rebuild From Scratch](#rebuild-from-scratch-full-deployment-guide)
 - [Known Limitations](#known-limitations)
-- [Failure Modes & Risk Awareness](#failure-modes--risk-awareness)
-- [Operational Awareness](#operational-awareness)
-- [Tech Stack](#tech-stack)
 - [Lessons Learned](#lessons-learned)
-- [Future Roadmap](#future-roadmap)
+- [Roadmap](#roadmap)
 - [Acknowledgments](#acknowledgments)
 - [License](#license)
 
 ---
 
-<br>
+## Overview
 
-## Project Background
+This repository documents my Raspberry Pi media automation stack. The goal was to build a reproducible, secure, and modular self-hosted system — and to learn everything required to do it properly.
 
-This project represents my first deep dive into self hosted infrastructure, containerization, and service orchestration.
+My background is in **Product Design** with experience in HTML, CSS, Python, C++, and Java. Before this project I had no hands-on experience with systems administration, Docker networking, or infrastructure. The learning curve was steep and genuinely uncomfortable. Port conflicts, VPN routing, bind mount mismatches, and container dependency chains were all solved through research and trial and error.
 
-My professional background is in **Product Design**, with hands on experience in HTML, CSS, Python, C++, and Java (Processing). But, I had no experience in systems administration, networking, virtualization, or IT infrastructure prior to putting this stack together. Other than some limited residential IT support I do at home for myself and others.
+The end result is a stack that automatically finds, downloads, organizes, and serves media — all routed through a VPN with zero manual intervention after initial setup.
 
-At the beginning, the objective was simple: set up a personal media server.
-
-Very quickly, that objective expanded into unfamiliar territory. I found myself learning Docker networking, VPN routing, firewall behavior, volume mappings, container dependencies, Linux services, and infrastructure documentation. I initially assumed this would be a straightforward process where I could follow a guide and execute a few commands. That assumption did not last long.
-
-There were moments of confusion, extended debugging sessions, and periods where I stepped away to reset. Even setting up the Raspberry Pi for the first time required patience and significant trial and error. Understanding why containers could not access shared directories required deeper research and troubleshooting. Diagnosing port conflicts, VPN routing behavior, and Docker networking patterns required thinking in ways that were different from front end or design workflows.
-
-This project challenged me technically in ways I had not previously experienced.
-
-At the same time, it reinforced something important. I genuinely enjoy building systems. I have wanted to create a self hosted media environment for years after seeing friends build their own servers. Completing this stack represents a meaningful milestone that reflects persistence, discipline, and measurable technical growth.
-
-Most importantly, I learned a tremendous amount and genuinely enjoyed building it.
-
----
-
-<br>
-
-## System Architecture Overview
-
-The stack operates across two layers:
-
-1. Native service layer (Jellyfin)
-2. Docker-managed automation layer
-
-Hardware:
+**Hardware:**
 - Raspberry Pi 5 (8GB RAM)
 - 6TB external HDD mounted at `/mnt/jellyfin`
 
-Logical flow:
-
-User → Jellyfin → Media Storage  
-Media request: Jellyseerr → Sonarr/Radarr → Prowlarr → qBittorrent → Storage → Jellyfin  
-Books/Comics: Bookshelf/Mylar3 → Prowlarr → qBittorrent → Storage → Kavita/Audiobookshelf
-
-Each service has a clearly defined responsibility.
+**Media served through:** Jellyfin (native systemd service, port 8096)
 
 ---
 
-<br>
+## Stack
 
-## Architecture Diagram
+All services run as Docker containers managed by Docker Compose, except Jellyfin which runs natively for hardware transcoding access.
+
+| Service | Purpose | Port | Image |
+|---|---|---|---|
+| **Jellyfin** | Media server — streams to all devices | 8096 | native (systemd) |
+| **Jellyseerr** | Request portal — users submit what to download | 5055 | `fallenbagel/jellyseerr` |
+| **Sonarr** | TV show automation — monitors, downloads, organizes | 8989 | `linuxserver/sonarr` |
+| **Radarr** | Movie automation — monitors, downloads, organizes | 7878 | `linuxserver/radarr` |
+| **Prowlarr** | Indexer manager — feeds torrent sources to all *arr apps | 9696 | `linuxserver/prowlarr` |
+| **Bazarr** | Subtitle automation — finds and syncs subtitles | 6767 | `linuxserver/bazarr` |
+| **qBittorrent** | Torrent client — all traffic routed through Gluetun VPN | 8080 | `linuxserver/qbittorrent` |
+| **Gluetun** | VPN gateway — enforces kill-switch for qBittorrent | — | `qmcgaw/gluetun` |
+| **Byparr** | Cloudflare bypass — lets Prowlarr access protected indexers | 8191 | `thephaseless/byparr` |
+| **Nginx Proxy Manager** | Reverse proxy — TLS termination and external routing | 80/443 | `jc21/nginx-proxy-manager` |
+| **Bookshelf** | Ebook/audiobook automation (Readarr replacement) | 8787 | `pennydreadful/bookshelf` |
+| **Mylar3** | Comics and manga automation | 8090 | `linuxserver/mylar3` |
+| **Audiobookshelf** | Audiobook and podcast server with mobile app | 13378 | `advplyr/audiobookshelf` |
+| **Kavita** | Ebook, comic, and manga reading server | 5000 | `jvmilazz0/kavita` |
+
+> **Note:** Byparr runs under the container name `flaresolverr` so Prowlarr's proxy config requires no changes. It is the actively maintained replacement for FlareSolverr, which became non-functional in 2025.
+
+---
+
+## Architecture
+
+### Architecture Diagram
 
 ```mermaid
 flowchart TB
@@ -85,7 +82,7 @@ flowchart TB
   R --> PI["Raspberry Pi 5"]
   R -->|HTTPS 80/443| RP
 
-  subgraph STORAGE["External Media Drive"]
+  subgraph STORAGE["External Media Drive /mnt/jellyfin"]
     DRV["/mnt/jellyfin"]
     DL["downloads/"]
     MOV["Movies/"]
@@ -165,394 +162,256 @@ flowchart TB
 
 ---
 
-<br>
+### Networking
 
-## Networking Architecture (Deep Dive)
+The most important networking decision in this stack is how qBittorrent is isolated inside Gluetun's network namespace:
 
-Docker normally assigns containers individual network namespaces.
-
-However:
-
-```
+```yaml
 network_mode: "service:gluetun"
 ```
 
-This forces qBittorrent to share Gluetun’s network stack.
+This means qBittorrent does not have its own network interface. It shares Gluetun's entirely. The result is a hard kill-switch: if the VPN tunnel drops for any reason, qBittorrent immediately loses internet access. There is no fallback to the bare home IP, and no configuration mistake that could accidentally expose torrent traffic.
 
-Result:
+Gluetun also sets `FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/16`, which allows qBittorrent to communicate with other containers and the LAN while keeping all internet traffic inside the VPN tunnel.
 
-- qBittorrent cannot access the internet without VPN
-- If VPN drops, torrent traffic stops
-- No IP leakage occurs
-- This is fail-closed enforcement
+All other services are LAN-restricted by default. Only ports 80 and 443 are forwarded through the router, handled by Nginx Proxy Manager.
 
-Only ports 80 and 443 are exposed publicly.
-
-Automation services remain LAN-restricted.
+Byparr (Cloudflare bypass) runs on port 8191 and is called automatically by Prowlarr when an indexer requires a Cloudflare challenge to be solved. It uses Camoufox (a Firefox-based anti-detection browser) instead of the stale Selenium/undetected-chromedriver approach used by its predecessor FlareSolverr.
 
 ---
 
-<br>
+### Storage
 
-## Public Access Configuration (DuckDNS + Nginx Proxy Manager)
-
-DuckDNS:
-- Provides a persistent subdomain
-- Automatically updates when your home IP changes
-
-Nginx Proxy Manager:
-- Issues and renews HTTPS certificates via Let's Encrypt
-- Handles TLS termination
-- Routes external traffic to internal services via a web UI
-- Runs in `network_mode: host` to bind ports 80 and 443 directly
-
-Flow:
-
-Internet  
-↓  
-Router (80/443)  
-↓  
-Nginx Proxy Manager  
-↓  
-Jellyfin:8096  
-
-Only Jellyfin is exposed publicly. All automation services remain LAN-restricted.
-
----
-
-<br>
-
-## Storage Architecture (Deep)
-
-All media stored at:
+All media lives on a single 6TB external HDD mounted at `/mnt/jellyfin`.
 
 ```
-/mnt/jellyfin
+/mnt/jellyfin/
+├── downloads/
+│   ├── books/
+│   └── comics/
+├── Movies/
+├── TV Shows/
+├── Anime/
+├── Books/
+├── Audiobooks/
+├── Comics/
+└── Magazines/
 ```
 
-Structure:
-
-```
-downloads/
-  books/
-  comics/
-Movies/
-TV Shows/
-Anime/
-Books/
-Audiobooks/
-Comics/
-Magazines/
-```
-
-Media automation containers (Sonarr, Radarr, Bazarr, Bookshelf, Mylar3, qBittorrent) bind the full drive:
+Media automation containers (Sonarr, Radarr, Bazarr, Bookshelf, Mylar3, qBittorrent) all bind the full drive root:
 
 ```
 /mnt/jellyfin → /data
 ```
 
-This prevents path mismatches, duplicate storage, hardlink failures, and import issues.
+Binding the same root path across every container ensures that a file at `/data/downloads/file.mkv` in qBittorrent is the same inode as `/data/TV Shows/Show/file.mkv` in Sonarr — which is required for hardlinks to work. Hardlinks allow completed downloads to be "moved" to their final library location without copying data, saving significant time and disk I/O.
 
-Reading/serving containers (Audiobookshelf, Kavita) bind individual subdirectories instead:
+Reading and serving containers (Audiobookshelf, Kavita) bind individual subdirectories instead:
 
 ```
 /mnt/jellyfin/Audiobooks → /audiobooks
-/mnt/jellyfin/Books      → /ebooks  (Audiobookshelf)
-/mnt/jellyfin/Books      → /books   (Kavita)
+/mnt/jellyfin/Books      → /ebooks       (Audiobookshelf)
+/mnt/jellyfin/Books      → /books        (Kavita)
 /mnt/jellyfin/Comics     → /comics
 /mnt/jellyfin/Magazines  → /magazines
 ```
 
-Volume consistency is critical for automation reliability.
-
 ---
 
-<br>
+### Public Access
 
-## Literature Stack
+[DuckDNS](https://www.duckdns.org) provides a persistent hostname that updates automatically when the home IP changes. Nginx Proxy Manager handles TLS termination using Let's Encrypt certificates, runs in `network_mode: host` to bind ports 80 and 443 directly on the Pi, and routes external HTTPS traffic to Jellyfin internally.
 
-A second automation layer handles books, audiobooks, comics, and manga.
-
-**Bookshelf** (port 8787)
-- Community replacement for Readarr, which was officially retired in 2025
-- Automates ebook and audiobook downloads
-- Uses Goodreads metadata via the `softcover` image tag
-- Connects to Prowlarr for indexers and qBittorrent for downloads
-
-**Mylar3** (port 8090)
-- Comics and manga automation — the Sonarr/Radarr equivalent for comics
-- Connects to Prowlarr for indexers and qBittorrent for downloads
-
-**Audiobookshelf** (port 13378)
-- Audiobook and podcast server with a first-party iOS/Android app
-- Manages permissions internally — does not use PUID/PGID
-
-**Kavita** (port 5000)
-- Unified reader for ebooks, comics, manga, and magazines
-- OPDS support enables any compatible e-reader app to connect
-- Manages permissions internally — does not use PUID/PGID
-
-Before starting the stack for the first time, run the setup script to create the required media directories:
-
-```bash
-bash setup-literature.sh
+```
+Internet → Router (port forward 80/443) → Nginx Proxy Manager → Jellyfin:8096
 ```
 
-This creates `Books/`, `Audiobooks/`, `Comics/`, `Magazines/`, `downloads/books/`, and `downloads/comics/` under `/mnt/jellyfin` with correct ownership.
+Only Jellyfin is reachable from the internet. All automation services are LAN-only.
 
 ---
 
-<br>
+## Getting Started
 
-## Deep Debugging Example
+### Prerequisites
 
-Media downloads succeeded but imports failed.
+- Raspberry Pi 5 (4GB minimum, 8GB recommended)
+- 64-bit Raspberry Pi OS (Bookworm or later)
+- External storage drive with sufficient capacity
+- OpenVPN credentials from a VPN provider
+- A [DuckDNS](https://www.duckdns.org) account (free) for remote access
 
-Cause:
-Inconsistent container bind mounts created path mismatches.
+### Deployment
 
-Fix:
-Standardized `/mnt/jellyfin → /data` across all services.
-
-Lesson:
-System health requires tracing interactions between containers.
-
----
-
-<br>
-
-## Rebuild From Scratch (Full Deployment Guide)
-
-### 1. Install Raspberry Pi OS (64-bit)
+#### 1. Update the system
 
 ```bash
-sudo apt update
-sudo apt upgrade -y
+sudo apt update && sudo apt upgrade -y
 ```
 
----
-
-### 2. Install Docker
+#### 2. Install Docker
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 ```
 
-Log out/in.
-
-Verify:
+Log out and back in, then verify:
 
 ```bash
 docker --version
 docker compose version
 ```
 
----
+#### 3. Install Jellyfin
 
-### 3. Install Jellyfin (native service, not Docker)
+Jellyfin runs as a native systemd service rather than a container. This gives it direct access to the Pi's hardware for transcoding without the complexity of passing through GPU/NPU devices into Docker.
 
 ```bash
 curl https://repo.jellyfin.org/install-debuntu.sh | sudo bash
 sudo systemctl enable --now jellyfin
 ```
 
-Jellyfin runs as a systemd service on port 8096. It is intentionally kept outside Docker so it has direct access to hardware (GPU/NPU) for transcoding.
+Jellyfin will be available at `http://<pi-ip>:8096`.
 
----
-
-### 4. Clone Repository
+#### 4. Clone this repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/raspberry-pi-media-stack.git
 cd raspberry-pi-media-stack
 ```
 
----
-
-### 5. Configure .env
+#### 5. Configure environment variables
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Set:
-- PUID (match `id`)
-- PGID
-- TZ
-- VPN credentials
+See the [Configuration](#configuration) section for all available variables.
 
----
+#### 6. Add VPN configuration
 
-### 6. Add VPN Configuration
-
-Download `.ovpn` file from VPN provider.
-
-Place inside:
+Download the `.ovpn` config file from your VPN provider and place it at:
 
 ```
 vpn/custom.ovpn
 ```
 
-This file contains:
-- VPN server endpoints
-- Encryption settings
-- Certificate data
+Gluetun reads this file to establish the VPN tunnel. Without it, the container will not start and qBittorrent will have no network access.
 
-Without this, Gluetun cannot connect.
-
----
-
-### 7. Mount Storage
+#### 7. Mount storage
 
 ```bash
-lsblk
+lsblk                               # identify your drive
 sudo mkdir -p /mnt/jellyfin
-sudo mount /dev/sdb1 /mnt/jellyfin
-```
-
-Add to `/etc/fstab`.
-
-Set ownership:
-
-```bash
+sudo mount /dev/sdb1 /mnt/jellyfin  # replace sdb1 with your device
 sudo chown -R 1000:1000 /mnt/jellyfin
 ```
 
----
+Add an entry to `/etc/fstab` to remount automatically on reboot:
 
-### 7b. Set Up Literature Directories (if using Literature Stack)
+```
+/dev/sdb1  /mnt/jellyfin  ext4  defaults,nofail  0  2
+```
+
+#### 8. Set up literature directories *(optional)*
+
+If you plan to use the Literature Stack (Bookshelf, Mylar3, Audiobookshelf, Kavita), run the setup script before starting the stack. It creates the required media and download directories with correct ownership.
 
 ```bash
 bash setup-literature.sh
 ```
 
-Creates Books, Audiobooks, Comics, Magazines, and literature download folders under `/mnt/jellyfin` with correct ownership. Run this before starting the stack.
-
----
-
-### 8. Start Stack
+#### 9. Start the stack
 
 ```bash
 docker compose up -d
-```
-
-Verify:
-
-```bash
 docker ps
 ```
 
+All containers should reach `Up` status within 30–60 seconds. Gluetun and Kavita include healthchecks and may show `(health: starting)` briefly before settling.
+
 ---
 
-<br>
+## Configuration
+
+Copy `.env.example` to `.env` and fill in your values. The `.env` file is excluded from version control via `.gitignore`.
+
+| Variable | Description | Example |
+|---|---|---|
+| `PUID` | User ID for LinuxServer containers. Run `id` to find yours. | `1000` |
+| `PGID` | Group ID for LinuxServer containers. | `1000` |
+| `TZ` | Timezone for all containers. | `America/Los_Angeles` |
+| `CG_OPENVPN_USER` | OpenVPN username from your VPN provider. | *(your credential)* |
+| `CG_OPENVPN_PASS` | OpenVPN password from your VPN provider. | *(your credential)* |
+
+> `PUID` and `PGID` control file ownership inside LinuxServer containers. If downloaded media is inaccessible to Jellyfin, a mismatch here is the most likely cause. Run `id` on the Pi to get the correct values for your user.
+
+---
+
+## Literature Stack
+
+A second automation layer handles written and audio content. These services integrate with the same Prowlarr indexers and qBittorrent download client as the main stack.
+
+**Bookshelf** *(port 8787)*
+A community-maintained replacement for Readarr, which was officially retired in 2025. Handles automated ebook and audiobook acquisition. Uses Goodreads metadata via the `softcover` image tag. The `hardcover` tag is also available for higher-quality metadata from [Hardcover.app](https://hardcover.app).
+
+**Mylar3** *(port 8090)*
+The comics and manga equivalent of Sonarr/Radarr. Tracks series by issue, monitors for new releases, and automatically downloads via Prowlarr and qBittorrent.
+
+**Audiobookshelf** *(port 13378)*
+An audiobook and podcast server with first-party iOS and Android apps. Manages file permissions internally and does not use `PUID`/`PGID`.
+
+**Kavita** *(port 5000)*
+A unified reading server for ebooks, comics, manga, and magazines. Supports the OPDS protocol, which allows compatible e-reader apps (Panels, Chunky, KOReader, etc.) to browse and sync your library. Manages file permissions internally.
+
+---
 
 ## Known Limitations
 
-- Single node
-- No RAID
-- No off-site backup
-- No monitoring
-- No container resource limits
+- **Single node** — no redundancy; if the Pi goes down, all services go down
+- **No RAID** — a single drive failure means data loss
+- **No off-site backup** — the library exists only on the local HDD
+- **No monitoring** — no alerting if a container crashes or disk fills
+- **No resource limits** — containers can compete for RAM/CPU during heavy activity (most relevant during active Byparr/Camoufox challenges)
 
 ---
-
-<br>
-
-## Failure Modes & Risk Awareness
-
-Risks:
-- HDD failure
-- VPN crash
-- Router misconfiguration
-- TLS expiration
-
-Future mitigation:
-- RAID/ZFS
-- Monitoring
-- Backup replication
-
----
-
-<br>
-
-## Operational Awareness
-
-Hardware:
-- Raspberry Pi 5 (8GB RAM)
-- 6TB HDD
-
-Add real metrics here if desired.
-
----
-
-<br>
-
-## Tech Stack
-
-Hardware:
-- Raspberry Pi 5
-- 6TB HDD
-
-Software:
-- Raspberry Pi OS
-- Docker
-- Docker Compose
-- Jellyfin
-- Sonarr
-- Radarr
-- Prowlarr
-- Bazarr
-- Jellyseerr
-- qBittorrent
-- Gluetun
-- Byparr (Cloudflare bypass)
-- Nginx Proxy Manager
-- DuckDNS
-- Bookshelf
-- Mylar3
-- Audiobookshelf
-- Kavita
-
----
-
-<br>
 
 ## Lessons Learned
 
-Infrastructure requires systems thinking.
+**Infrastructure requires systems thinking.**
+Individual services are easy. Making them interact correctly — consistent paths, correct permissions, shared network namespaces — requires reasoning about the whole system at once.
 
-Debugging requires tracing interactions.
+**Debugging requires tracing interactions.**
+The most frustrating issue in this build was downloads completing successfully but imports failing silently. The cause was inconsistent bind mount paths: qBittorrent wrote to `/data/downloads/file.mkv`, but Sonarr was configured to look for it at `/downloads/file.mkv`. Standardizing every container to bind `/mnt/jellyfin → /data` resolved it. The lesson is to follow a file's path across every container boundary before assuming the code is wrong.
 
-Security must be intentional.
+**Security must be intentional.**
+The VPN kill-switch via `network_mode: "service:gluetun"` did not happen accidentally — it was a deliberate architectural decision. Same for keeping automation services off the public internet. Security defaults in Docker are permissive; you have to choose restriction.
 
-Growth happens through discomfort.
-
----
-
-<br>
-
-## Future Roadmap
-
-- Migrate Jellyfin to Docker
-- Deploy Proxmox
-- Implement RAID/ZFS
-- Add Immich, Paperless-ngx, Home Assistant
-- Add monitoring & backup automation
+**Growth happens through discomfort.**
+There were extended sessions where nothing worked and the path forward was unclear. Pushing through those moments is where the real learning happened.
 
 ---
 
-<br>
+## Roadmap
+
+- [ ] Migrate Jellyfin into Docker (with hardware transcoding passthrough)
+- [ ] Deploy on Proxmox for better VM/container separation
+- [ ] Implement RAID or ZFS for drive redundancy
+- [ ] Add Immich for photo/video library management
+- [ ] Add Paperless-ngx for document management
+- [ ] Add Home Assistant for home automation integration
+- [ ] Add monitoring and alerting (Uptime Kuma or similar)
+- [ ] Implement automated off-site backup
+
+---
 
 ## Acknowledgments
 
-This project stands on the support of peers and the open source community.
+Built on the shoulders of the open source community and the selfhosted ecosystem. Special thanks to the LinuxServer.io team, the \*arr project maintainers, the Gluetun project, and the communities at [r/selfhosted](https://reddit.com/r/selfhosted) and [r/homelab](https://reddit.com/r/homelab).
 
 ---
 
-<br>
-
 ## License
 
-MIT License — educational and homelab use.
+MIT License — free to use, adapt, and share for personal and educational purposes.
