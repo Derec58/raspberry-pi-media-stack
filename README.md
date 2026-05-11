@@ -16,6 +16,7 @@ The goal of this project is to create a reproducible, secure, and modular self h
 - [Networking Architecture](#networking-architecture-deep-dive)
 - [Public Access Configuration](#public-access-configuration-duckdns--caddy)
 - [Storage Architecture](#storage-architecture-deep)
+- [Literature Stack](#literature-stack)
 - [Deep Debugging Example](#deep-debugging-example)
 - [Rebuild From Scratch](#rebuild-from-scratch-full-deployment-guide)
 - [Known Limitations](#known-limitations)
@@ -67,7 +68,8 @@ Hardware:
 Logical flow:
 
 User → Jellyfin → Media Storage  
-User Request → Jellyseerr → Sonarr/Radarr → Prowlarr → qBittorrent → Storage → Jellyfin
+Media request: Jellyseerr → Sonarr/Radarr → Prowlarr → qBittorrent → Storage → Jellyfin  
+Books/Comics: Bookshelf/Mylar3 → Prowlarr → qBittorrent → Storage → Kavita/Audiobookshelf
 
 Each service has a clearly defined responsibility.
 
@@ -88,16 +90,22 @@ flowchart TB
     MOV["Movies/"]
     TV["TV Shows/"]
     AN["Anime/"]
+    BK["Books/"]
+    AB["Audiobooks/"]
+    CM["Comics/"]
+    MG["Magazines/"]
     DRV --> DL
     DRV --> MOV
     DRV --> TV
     DRV --> AN
+    DRV --> BK
+    DRV --> AB
+    DRV --> CM
+    DRV --> MG
   end
 
   subgraph PUBLIC["Public Access Layer"]
-    DDNS["DuckDNS"]
-    RP["Caddy Reverse Proxy\nPorts 80/443"]
-    DDNS --> RP
+    RP["Nginx Proxy Manager\nPorts 80/443\n(DuckDNS + Let's Encrypt)"]
   end
 
   subgraph NATIVE["Native Service"]
@@ -105,11 +113,12 @@ flowchart TB
   end
 
   subgraph DOCKER["Docker Media Stack"]
-    JS["Jellyseerr"]
-    SO["Sonarr"]
-    RA["Radarr"]
-    PR["Prowlarr"]
-    BZ["Bazarr"]
+    JS["Jellyseerr\n5055"]
+    SO["Sonarr\n8989"]
+    RA["Radarr\n7878"]
+    PR["Prowlarr\n9696"]
+    BZ["Bazarr\n6767"]
+    BYP["Byparr\n8191\n(Cloudflare bypass)"]
 
     subgraph VPN["Gluetun VPN Namespace"]
       GL["Gluetun"]
@@ -117,17 +126,33 @@ flowchart TB
       GL --> QB
     end
 
+    subgraph LIT["Literature Stack"]
+      BS["Bookshelf\n8787"]
+      MY["Mylar3\n8090"]
+      ABS["Audiobookshelf\n13378"]
+      KV["Kavita\n5000"]
+    end
+
     JS --> SO
     JS --> RA
     SO --> PR
     RA --> PR
     PR --> QB
+    PR --> BYP
+    BS --> PR
+    MY --> PR
+    BS --> QB
+    MY --> QB
     QB --> DL
     SO --> TV
     RA --> MOV
     BZ --> MOV
     BZ --> TV
     BZ --> AN
+    ABS --> AB
+    KV --> BK
+    KV --> CM
+    KV --> MG
   end
 
   RP --> JF
@@ -168,16 +193,17 @@ Automation services remain LAN-restricted.
 
 <br>
 
-## Public Access Configuration (DuckDNS + Caddy)
+## Public Access Configuration (DuckDNS + Nginx Proxy Manager)
 
 DuckDNS:
-- Provides persistent subdomain
-- Updates dynamic IP automatically
+- Provides a persistent subdomain
+- Automatically updates when your home IP changes
 
-Caddy:
-- Issues HTTPS certificates via Let's Encrypt
+Nginx Proxy Manager:
+- Issues and renews HTTPS certificates via Let's Encrypt
 - Handles TLS termination
-- Forwards traffic internally to Jellyfin
+- Routes external traffic to internal services via a web UI
+- Runs in `network_mode: host` to bind ports 80 and 443 directly
 
 Flow:
 
@@ -185,11 +211,11 @@ Internet
 ↓  
 Router (80/443)  
 ↓  
-Caddy  
+Nginx Proxy Manager  
 ↓  
 Jellyfin:8096  
 
-Only Jellyfin is public.
+Only Jellyfin is exposed publicly. All automation services remain LAN-restricted.
 
 ---
 
@@ -207,9 +233,15 @@ Structure:
 
 ```
 downloads/
+  books/
+  comics/
 Movies/
 TV Shows/
 Anime/
+Books/
+Audiobooks/
+Comics/
+Magazines/
 ```
 
 All containers bind:
@@ -226,6 +258,41 @@ This prevents:
 - Import issues
 
 Volume consistency is critical for automation reliability.
+
+---
+
+<br>
+
+## Literature Stack
+
+A second automation layer handles books, audiobooks, comics, and manga.
+
+**Bookshelf** (port 8787)
+- Community replacement for Readarr, which was officially retired in 2025
+- Automates ebook and audiobook downloads
+- Uses Goodreads metadata via the `softcover` image tag
+- Connects to Prowlarr for indexers and qBittorrent for downloads
+
+**Mylar3** (port 8090)
+- Comics and manga automation — the Sonarr/Radarr equivalent for comics
+- Connects to Prowlarr for indexers and qBittorrent for downloads
+
+**Audiobookshelf** (port 13378)
+- Audiobook and podcast server with a first-party iOS/Android app
+- Manages permissions internally — does not use PUID/PGID
+
+**Kavita** (port 5000)
+- Unified reader for ebooks, comics, manga, and magazines
+- OPDS support enables any compatible e-reader app to connect
+- Manages permissions internally — does not use PUID/PGID
+
+Before starting the stack for the first time, run the setup script to create the required media directories:
+
+```bash
+bash setup-literature.sh
+```
+
+This creates `Books/`, `Audiobooks/`, `Comics/`, `Magazines/`, `downloads/books/`, and `downloads/comics/` under `/mnt/jellyfin` with correct ownership.
 
 ---
 
@@ -338,6 +405,16 @@ sudo chown -R 1000:1000 /mnt/jellyfin
 
 ---
 
+### 6b. Set Up Literature Directories (if using Literature Stack)
+
+```bash
+bash setup-literature.sh
+```
+
+Creates Books, Audiobooks, Comics, Magazines, and literature download folders under `/mnt/jellyfin` with correct ownership. Run this before starting the stack.
+
+---
+
 ### 7. Start Stack
 
 ```bash
@@ -413,8 +490,13 @@ Software:
 - Jellyseerr
 - qBittorrent
 - Gluetun
-- Caddy
+- Byparr (Cloudflare bypass)
+- Nginx Proxy Manager
 - DuckDNS
+- Bookshelf
+- Mylar3
+- Audiobookshelf
+- Kavita
 
 ---
 
