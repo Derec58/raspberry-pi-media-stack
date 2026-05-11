@@ -58,11 +58,12 @@ services:
   # Prowlarr talks to this automatically when an indexer needs it
   # ─────────────────────────────────────────────
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    image: ghcr.io/thephaseless/byparr:latest
     container_name: flaresolverr
     environment:
       - TZ=${TZ}
       - LOG_LEVEL=info
+      - PORT=8191
     ports:
       - 8191:8191
     restart: unless-stopped
