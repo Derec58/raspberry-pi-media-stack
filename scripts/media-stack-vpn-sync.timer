@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll VPN IP every 30 seconds for qBittorrent binding
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=30s
+Unit=media-stack-vpn-sync.service
+
+[Install]
+WantedBy=timers.target

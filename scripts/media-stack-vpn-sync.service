@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync qBittorrent VPN interface IP with Gluetun tun0
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/korn/media-stack/scripts/sync-qbit-vpn-ip.sh
+WorkingDirectory=/home/korn/media-stack
+
+[Install]
+WantedBy=multi-user.target
