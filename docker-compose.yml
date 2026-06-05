@@ -19,7 +19,9 @@ services:
       - DNS_KEEP_NAMESERVER=on
       - BLOCK_MALICIOUS=off
       - BLOCK_SURVEILLANCE=off
-      - FIREWALL_INPUT_PORTS=8080,6881
+      - FIREWALL_INPUT_PORTS=8080,6881,8888
+      - HTTPPROXY=on
+      - HTTPPROXY_LISTENING_ADDRESS=:8888
       - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/16
       - FIREWALL=on
       - FIREWALL_VPN_INPUT_PORTS=6881
@@ -79,6 +81,9 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - UMASK=002
+      - HTTP_PROXY=http://gluetun:8888
+      - HTTPS_PROXY=http://gluetun:8888
+      - NO_PROXY=localhost,127.0.0.1
     volumes:
       - ./config/prowlarr:/config
     ports:
