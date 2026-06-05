@@ -66,6 +66,9 @@ services:
       - TZ=${TZ}
       - LOG_LEVEL=info
       - PORT=8191
+      - HTTP_PROXY=http://gluetun:8888
+      - HTTPS_PROXY=http://gluetun:8888
+      - NO_PROXY=localhost,127.0.0.1
     ports:
       - 8191:8191
     restart: unless-stopped
