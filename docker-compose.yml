@@ -10,28 +10,47 @@ services:
       - NET_ADMIN
     environment:
       - TZ=${TZ}
-      - VPN_SERVICE_PROVIDER=custom
-      - VPN_TYPE=openvpn
-      - OPENVPN_CUSTOM_CONFIG=/gluetun/custom/custom.ovpn
-      - OPENVPN_CUSTOM_CONFIG_ONLY=true
-      - OPENVPN_USER=${CG_OPENVPN_USER}
-      - OPENVPN_PASSWORD=${CG_OPENVPN_PASS}
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - SERVER_COUNTRIES=United States
+      # only connect to servers that support NAT-PMP port forwarding
+      - PORT_FORWARD_ONLY=on
+      - VPN_PORT_FORWARDING=on
+      # push the forwarded port into qBittorrent (shares this netns) whenever it changes
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -O- --retry-connrefused --post-data "json={\"listen_port\":{{PORTS}}}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>&1'
       - DNS_KEEP_NAMESERVER=on
       - BLOCK_MALICIOUS=off
       - BLOCK_SURVEILLANCE=off
-      - FIREWALL_INPUT_PORTS=8080,6881,8888
+      - FIREWALL_INPUT_PORTS=8080,8888
       - HTTPPROXY=on
       - HTTPPROXY_LISTENING_ADDRESS=:8888
       - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/16
       - FIREWALL=on
-      - FIREWALL_VPN_INPUT_PORTS=6881
     volumes:
       - ./config/gluetun:/gluetun
-      - ./vpn:/gluetun/custom
     ports:
       - 8080:8080
-      - 6881:6881
-      - 6881:6881/udp
+    # Declared here to override the image's default start_period of 10s, which
+    # is far shorter than a cold ProtonVPN WireGuard handshake + NAT-PMP lease.
+    # With the default, Docker marked Gluetun *unhealthy* ~25s into a restart;
+    # Compose treats an unhealthy dependency as a hard abort rather than
+    # something to keep waiting on, so every service gated on
+    # `condition: service_healthy` (qbittorrent, mylar3, shelfmark) was skipped
+    # and never retried, even though Gluetun went healthy moments later. That
+    # silently killed the download stack after the weekly backup on 2026-09-06
+    # and again on 2026-09-13. Failures inside start_period do not mark the
+    # container unhealthy, so Compose waits instead of giving up.
+    healthcheck:
+      test: ["CMD-SHELL", "/gluetun-entrypoint healthcheck"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+    # unless-stopped, not on-failure:N. qBittorrent shares this container's
+    # network namespace, and Prowlarr, Mylar3 and Shelfmark all egress through
+    # its HTTP proxy, so a Gluetun that gives up after N failures takes the
+    # whole download stack down until someone notices. Keep retrying instead.
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
