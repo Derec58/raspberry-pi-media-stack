@@ -187,42 +187,91 @@ services:
   # LITERATURE STACK
   # ═════════════════════════════════════════════
 
-  # EBOOK + AUDIOBOOK AUTOMATION
-  # Community replacement for Readarr (which was officially retired in 2025).
-  # Same port and API as Readarr. Use tag 'softcover' for Goodreads metadata
-  # or 'hardcover' for Hardcover.app metadata (higher quality, newer service).
-  # Connects to Prowlarr for indexers, qBittorrent for downloads.
-  bookshelf:
-    image: ghcr.io/pennydreadful/bookshelf:softcover
-    container_name: bookshelf
+  # EBOOK + AUDIOBOOK SEARCH AND DOWNLOAD
+  # Replaces the retired Readarr (previously run here as the 'bookshelf'
+  # service, which was Readarr itself despite the name). Search-and-download
+  # front end: finds releases, hands torrents to qBittorrent, then files the
+  # finished book into the library folder Kavita already scans.
+  #
+  # Uses the '-lite' image variant deliberately: the standard image bundles its
+  # own Chromium for Cloudflare bypass (upstream advises ~2GB RAM for it), which
+  # is wasteful on a Pi when Byparr is already running for exactly that job.
+  # EXT_BYPASSER_URL points it at Byparr instead.
+  #
+  # Outbound traffic goes through gluetun's HTTP proxy, same pattern as
+  # prowlarr and flaresolverr, rather than sharing gluetun's netns.
+  shelfmark:
+    image: ghcr.io/calibrain/shelfmark-lite:1.3.9
+    container_name: shelfmark
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - UMASK=002
+      # ebooks land where Kavita's Books library points; audiobooks go to the
+      # folder Audiobookshelf serves
+      - INGEST_DIR=/data/Books
+      - DESTINATION_AUDIOBOOK=/data/Audiobooks
+      - USING_EXTERNAL_BYPASSER=true
+      - EXT_BYPASSER_URL=http://flaresolverr:8191
+      - PROXY_MODE=http
+      - HTTP_PROXY=http://gluetun:8888
+      - HTTPS_PROXY=http://gluetun:8888
+      - NO_PROXY=localhost,127.0.0.1,gluetun,prowlarr,flaresolverr
     volumes:
-      - ./config/bookshelf:/config
+      - ./config/shelfmark:/config
       - /mnt/jellyfin:/data
     ports:
-      - 8787:8787
+      - 8084:8084
+    depends_on:
+      gluetun:
+        condition: service_healthy
     restart: unless-stopped
 
   # COMIC + MANGA + MAGAZINE AUTOMATION
   # Equivalent of Sonarr/Radarr for comics and periodicals.
   # Connects to Prowlarr for indexers, qBittorrent for downloads.
+  #
+  # Outbound traffic goes through gluetun's HTTP proxy, same pattern as
+  # prowlarr, flaresolverr and shelfmark. This matters because DDL is enabled:
+  # with DDL, mylar3 fetches comic files itself rather than handing them to
+  # qBittorrent, so without this it would download on the real WAN IP.
+  # Mylar3's own enable_proxy setting is NOT sufficient: only getcomics.py and
+  # pixeldrain.py honour it, while mediafire.py and 20 other modules do not.
+  # Setting the proxy at the container level covers every module, because both
+  # requests and urllib.request read these variables automatically.
+  # Lowercase duplicates are intentional (urllib prefers lowercase).
   mylar3:
-    image: lscr.io/linuxserver/mylar3:latest
+    # Pinned. Mylar3's behaviour here is tuned in detail (provider order with
+    # DDL first, file renaming, pack handling, proxy egress) and an unattended
+    # 'latest' pull could silently change any of it. Bump deliberately.
+    image: lscr.io/linuxserver/mylar3:v0.10.0-ls262
     container_name: mylar3
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
       - UMASK=002
+      - HTTP_PROXY=http://gluetun:8888
+      - HTTPS_PROXY=http://gluetun:8888
+      - http_proxy=http://gluetun:8888
+      - https_proxy=http://gluetun:8888
+      # internal services must bypass the proxy: qbittorrent lives inside
+      # gluetun's netns and is reached as gluetun:8080
+      - NO_PROXY=localhost,127.0.0.1,gluetun,prowlarr,flaresolverr,qbittorrent
+      - no_proxy=localhost,127.0.0.1,gluetun,prowlarr,flaresolverr,qbittorrent
     volumes:
       - ./config/mylar3:/config
       - /mnt/jellyfin:/data
     ports:
       - 8090:8090
+    # Mylar3's entire egress path is gluetun's proxy, so wait for it on a cold
+    # boot the same way shelfmark does. Without this Mylar3 can start first and
+    # its early outbound calls fail. It fails closed rather than leaking (with
+    # HTTP_PROXY set and the proxy unreachable, requests and urllib raise rather
+    # than going direct), so this is about avoiding noise, not plugging a leak.
+    depends_on:
+      gluetun:
+        condition: service_healthy
     restart: unless-stopped
 
   # AUDIOBOOK SERVER + MOBILE APP BACKEND
@@ -247,7 +296,7 @@ services:
   # (allows any e-reader app to connect if you get a device later).
   # Does NOT use PUID/PGID — manages permissions internally.
   kavita:
-    image: jvmilazz0/kavita:latest
+    image: jvmilazz0/kavita:0.9.0.2
     container_name: kavita
     environment:
       - TZ=${TZ}
@@ -264,7 +313,7 @@ services:
   # REVERSE PROXY — routes external traffic to internal services
   # ─────────────────────────────────────────────
   nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:latest
+    image: jc21/nginx-proxy-manager:2.15.1
     container_name: nginx-proxy-manager
     network_mode: host
     volumes:
