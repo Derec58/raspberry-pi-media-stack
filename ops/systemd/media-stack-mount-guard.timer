@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodically check media-stack containers for stale media-drive bind mounts
+
+[Timer]
+# Early enough to heal a boot-time race before anything tries to download,
+# then a slow steady poll — a stale mount can only appear at container start.
+OnBootSec=90s
+OnUnitActiveSec=5min
+AccuracySec=10s
+Unit=media-stack-mount-guard.service
+
+[Install]
+WantedBy=timers.target

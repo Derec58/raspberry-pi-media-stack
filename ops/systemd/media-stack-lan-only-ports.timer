@@ -1,0 +1,12 @@
+[Unit]
+Description=Re-apply media-stack LAN-only port rules
+
+[Timer]
+# On boot, then periodically: a dockerd restart rebuilds DOCKER-USER and drops
+# the jump, so re-asserting it beats relying on save/restore.
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

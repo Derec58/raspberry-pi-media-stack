@@ -1,0 +1,12 @@
+[Unit]
+Description=Restrict media-stack published web UIs to LAN sources
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/home/korn/media-stack/scripts/lan-only-ports.sh
+
+[Install]
+WantedBy=multi-user.target

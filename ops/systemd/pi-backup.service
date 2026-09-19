@@ -1,0 +1,10 @@
+[Unit]
+Description=Cold backup of system, jellyfin, and home to /mnt/backup
+RequiresMountsFor=/mnt/backup
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pi-backup.sh
+Nice=10
+IOSchedulingClass=idle

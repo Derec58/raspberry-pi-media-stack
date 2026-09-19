@@ -1,0 +1,9 @@
+[Unit]
+Description=Heal media-stack containers pinned to a stale media-drive bind mount
+After=docker.service mnt-jellyfin.mount
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/home/korn/media-stack/scripts/check-media-mount.sh

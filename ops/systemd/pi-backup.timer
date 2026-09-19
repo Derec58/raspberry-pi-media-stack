@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly cold backup to /mnt/backup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
