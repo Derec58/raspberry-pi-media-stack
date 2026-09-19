@@ -105,7 +105,7 @@ services:
       - UMASK=002
       - HTTP_PROXY=http://gluetun:8888
       - HTTPS_PROXY=http://gluetun:8888
-      - NO_PROXY=localhost,127.0.0.1
+      - NO_PROXY=localhost,127.0.0.1,gluetun,sonarr,radarr,mylar3,flaresolverr
     volumes:
       - ./config/prowlarr:/config
     ports:
