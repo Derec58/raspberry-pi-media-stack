@@ -151,9 +151,26 @@ services:
   # ─────────────────────────────────────────────
   # MEDIA REQUEST PORTAL
   # ─────────────────────────────────────────────
+  # Seerr — the merged successor to Jellyseerr and Overseerr, renamed upstream
+  # in 2025. fallenbagel/jellyseerr is a dead end: its newest tag on either
+  # registry is 2025-10-06 and both stop at 2.7.3, which is what ran here until
+  # 2026-09-18. Config migrates automatically on first start and the migration
+  # is ONE-WAY; the 2.7.3 config is archived at
+  # ~/jellyseerr-2.7.3-config-20260918-143030.tar.gz.
+  #
+  # The service and container deliberately keep the 'jellyseerr' name so nothing
+  # else has to change. NPM forwards to 172.17.0.1:5055 by IP, not by container
+  # name, so the reverse proxy is unaffected either way.
+  #
+  # init: true is REQUIRED — the Seerr image no longer ships an init process.
+  #
+  # Seerr runs as the non-root 'node' user (uid 1000) where Jellyseerr ran as
+  # root, so ./config/jellyseerr must be owned 1000:1000 or the first write
+  # fails. It was root-owned; chowned during the migration.
   jellyseerr:
-    image: fallenbagel/jellyseerr:latest
+    image: ghcr.io/seerr-team/seerr:v3.4.1
     container_name: jellyseerr
+    init: true
     environment:
       - TZ=${TZ}
     volumes:
