@@ -1,0 +1,14 @@
+[Unit]
+Description=Extract embedded English subtitles to SRT sidecars across all libraries
+After=docker.service mnt-jellyfin.mount
+Requires=mnt-jellyfin.mount
+
+[Service]
+Type=oneshot
+User=root
+# The Pi 5 has no video encoder, so Jellyfin burning a bitmap subtitle track into
+# the video means software x264 at ~0.111x real time -- unplayable. A text sidecar
+# is delivered as-is and never triggers that path.
+ExecStart=/usr/bin/python3 /home/korn/media-stack/scripts/extract-subs.py --apply
+Nice=10
+IOSchedulingClass=idle

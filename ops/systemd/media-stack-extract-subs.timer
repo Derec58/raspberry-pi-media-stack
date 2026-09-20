@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodically extract subtitle sidecars for newly imported media
+
+[Timer]
+# Cheap to run often: the script skips any file whose sidecar already exists,
+# so a pass over an unchanged library is just a directory walk.
+OnBootSec=10min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+Unit=media-stack-extract-subs.service
+
+[Install]
+WantedBy=timers.target
