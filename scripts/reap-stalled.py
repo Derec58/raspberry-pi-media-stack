@@ -41,6 +41,33 @@ def call(app, method, path, timeout=90):
         return 0, str(e)[:200]
 
 
+def qbit_states():
+    """name -> (state, seeds, progress) straight from qBittorrent.
+
+    Radarr reports a torrent queued behind qBittorrent's active-download limit
+    identically to one with no peers: both sit at 0 bytes. Reaping on "0 bytes and
+    old" would therefore kill perfectly healthy torrents that simply had not been
+    given a slot yet. qBittorrent distinguishes them -- queuedDL vs stalledDL --
+    so ask it directly and only ever reap stalledDL/metaDL.
+    """
+    out = subprocess.run(["sudo", "docker", "exec", "gluetun", "sh", "-c",
+        'wget -qO- --timeout=10 "http://127.0.0.1:8080/api/v2/torrents/info" 2>/dev/null'],
+        capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    try:
+        ts = json.loads(out.stdout)
+    except Exception:
+        return None
+    return {t["name"]: (t.get("state"), t.get("num_seeds", 0), t.get("progress", 0.0))
+            for t in ts}
+
+
+# Only these mean "qBittorrent is trying and getting nowhere". queuedDL means it
+# has not started yet, which is not a stall.
+DEAD_STATES = ("stalledDL", "metaDL", "missingFiles", "error")
+
+
 def age_hours(added):
     if not added:
         return 0.0
@@ -60,6 +87,9 @@ def main():
     if not args.apply:
         print("=== DRY RUN - nothing removed (pass --apply) ===")
 
+    qb = qbit_states()
+    if qb is None:
+        print("  WARNING: qBittorrent unreachable; using conservative fallback")
     total = 0
     for app in APPS:
         st, q = call(app, "GET", "/api/v3/queue?pageSize=200&includeMovie=true&includeSeries=true")
@@ -69,17 +99,25 @@ def main():
         recs = q.get("records", [])
         dead = []
         for r in recs:
-            size = r.get("size") or 0
-            got = size - (r.get("sizeleft") or 0)
             hrs = age_hours(r.get("added"))
-            if got <= 0 and hrs >= args.hours:
-                dead.append((r, hrs))
+            if hrs < args.hours:
+                continue
+            st_, seeds, prog = (qb or {}).get(r.get("title", ""), (None, None, None))
+            if qb is None:
+                # qBittorrent unreachable: fall back to the old heuristic but only
+                # for items far past the window, to avoid killing queued torrents.
+                size = r.get("size") or 0
+                if size - (r.get("sizeleft") or 0) <= 0 and hrs >= args.hours * 4:
+                    dead.append((r, hrs, "no qbit; 0 bytes"))
+                continue
+            if st_ in DEAD_STATES and prog == 0.0:
+                dead.append((r, hrs, f"{st_}, {seeds} seeds"))
 
         print(f"  {app}: {len(recs)} queued, {len(dead)} stalled >= {args.hours}h")
-        for r, hrs in dead:
+        for r, hrs, why in dead:
             title = ((r.get("movie") or r.get("series") or {}).get("title")
                      or r.get("title", "?"))
-            print(f"      {hrs:5.1f}h  {title[:46]}")
+            print(f"      {hrs:5.1f}h  {title[:40]:<40} {why}")
             if not args.apply:
                 continue
             st, _ = call(app, "DELETE",
