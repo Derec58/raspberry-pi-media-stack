@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodically reap stalled downloads
+
+[Timer]
+# Only items at exactly zero bytes and older than 2h are touched, so a frequent
+# poll is safe -- a slow but live download is never killed.
+OnBootSec=15min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+Unit=media-stack-reap-stalled.service
+
+[Install]
+WantedBy=timers.target

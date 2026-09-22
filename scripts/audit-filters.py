@@ -139,6 +139,14 @@ for app, profs in (("radarr", ["Mobile 1080p"]), ("sonarr", ["Anime 1080p", "TV 
               "Bluray higher" if web < bd else None, "WEBDL higher")
         check(p.get("cutoff") == 1002, f"{app} {p['name']} cutoff=WEB 1080p", p.get("cutoff"), 1002)
 
+print("\n=== indexer seeder floor ===")
+# minimumSeeders defaulted to 1 on all 16 indexers, so RSS and Seerr requests --
+# not just my scripts -- kept grabbing dead swarms that never started downloading.
+for app in APPS:
+    for i in get(app, "/api/v3/indexer"):
+        v = next((f.get("value") for f in i.get("fields", []) if f["name"] == "minimumSeeders"), None)
+        check(isinstance(v, int) and v >= 10, f"{app} {i['name'][:26]} minimumSeeders", v, ">= 10")
+
 print("\n=== media management ===")
 for app in APPS:
     c = get(app, "/api/v3/config/mediamanagement")

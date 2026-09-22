@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove downloads stuck at zero bytes, blocklist them, and search again
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+# A torrent with no reachable peers sits in qBittorrent metaDL forever. Radarr's
+# autoRedownloadFailed only fires on a FAILED download, and a stalled one never
+# fails -- 13 of 15 downloads sat at 0 bytes for 17 hours before anyone noticed.
+ExecStart=/usr/bin/python3 /home/korn/media-stack/scripts/reap-stalled.py --apply

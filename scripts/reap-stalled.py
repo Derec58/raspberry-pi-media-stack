@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Remove downloads that never started, blocklist them, and search again.
+
+A torrent with zero reachable peers sits in qBittorrent's "downloading metadata"
+state forever. Nothing in the stack gives up on it: Radarr's autoRedownloadFailed
+only fires on a FAILED download, and a stalled one never fails. 13 of 15 downloads
+sat at 0 bytes for 17 hours before anyone noticed.
+
+Only items at EXACTLY zero bytes are touched, so a slow-but-live download is never
+killed. Blocklisting matters as much as removing -- without it the next search can
+pick the same dead release straight back.
+
+Dry run by default.
+"""
+import argparse, sys
+from datetime import datetime, timezone
+
+sys.path.insert(0, "/home/korn/media-stack/scripts")
+
+import json, subprocess, urllib.request
+
+APPS = {"radarr": (7878, "v3"), "sonarr": (8989, "v3")}
+
+
+def key(app):
+    return subprocess.run(["sudo", "grep", "-oP", "(?<=<ApiKey>)[^<]+",
+        f"/home/korn/media-stack/config/{app}/config.xml"],
+        capture_output=True, text=True).stdout.strip()
+
+
+def call(app, method, path, timeout=90):
+    port, _ = APPS[app]
+    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method,
+                               headers={"X-Api-Key": key(app),
+                                        "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(r, timeout=timeout) as x:
+            raw = x.read().decode()
+            return x.status, (json.loads(raw) if raw.strip() else None)
+    except Exception as e:
+        return 0, str(e)[:200]
+
+
+def age_hours(added):
+    if not added:
+        return 0.0
+    try:
+        t = datetime.fromisoformat(added.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(timezone.utc) - t).total_seconds() / 3600.0
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--apply", action="store_true", help="actually remove (default: dry run)")
+    ap.add_argument("--hours", type=float, default=2.0, help="stall age before reaping")
+    args = ap.parse_args()
+
+    if not args.apply:
+        print("=== DRY RUN - nothing removed (pass --apply) ===")
+
+    total = 0
+    for app in APPS:
+        st, q = call(app, "GET", "/api/v3/queue?pageSize=200&includeMovie=true&includeSeries=true")
+        if st != 200 or not isinstance(q, dict):
+            print(f"  {app}: queue unavailable ({st})")
+            continue
+        recs = q.get("records", [])
+        dead = []
+        for r in recs:
+            size = r.get("size") or 0
+            got = size - (r.get("sizeleft") or 0)
+            hrs = age_hours(r.get("added"))
+            if got <= 0 and hrs >= args.hours:
+                dead.append((r, hrs))
+
+        print(f"  {app}: {len(recs)} queued, {len(dead)} stalled >= {args.hours}h")
+        for r, hrs in dead:
+            title = ((r.get("movie") or r.get("series") or {}).get("title")
+                     or r.get("title", "?"))
+            print(f"      {hrs:5.1f}h  {title[:46]}")
+            if not args.apply:
+                continue
+            st, _ = call(app, "DELETE",
+                         f"/api/v3/queue/{r['id']}?removeFromClient=true&blocklist=true")
+            if st not in (200, 202):
+                print(f"              remove failed [{st}]"); continue
+            # search again; the indexer seeder floor keeps the next pick alive
+            mid, sid = r.get("movieId"), r.get("seriesId")
+            if app == "radarr" and mid:
+                _post(app, {"name": "MoviesSearch", "movieIds": [mid]})
+            elif app == "sonarr" and sid:
+                _post(app, {"name": "SeriesSearch", "seriesId": sid})
+            total += 1
+
+    if args.apply:
+        print(f"\n  reaped and re-searched: {total}")
+    return 0
+
+
+def _post(app, body):
+    port, _ = APPS[app]
+    data = json.dumps(body).encode()
+    r = urllib.request.Request(f"http://127.0.0.1:{port}/api/v3/command", data=data,
+                               method="POST",
+                               headers={"X-Api-Key": key(app),
+                                        "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(r, timeout=60):
+            return True
+    except Exception:
+        return False
+
+
+if __name__ == "__main__":
+    sys.exit(main())
