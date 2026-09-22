@@ -1,0 +1,13 @@
+[Unit]
+Description=Audit media files for playback problems (wrong default tracks, bitmap subs, bitrate)
+After=mnt-jellyfin.mount
+Requires=mnt-jellyfin.mount
+
+[Service]
+Type=oneshot
+User=root
+# Reports only, changes nothing. 112 episodes defaulted to a signs-and-songs
+# subtitle track for months because nothing was looking at the files themselves.
+ExecStart=/usr/bin/python3 /home/korn/media-stack/scripts/audit-library.py
+Nice=15
+IOSchedulingClass=idle

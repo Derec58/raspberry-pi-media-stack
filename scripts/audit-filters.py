@@ -44,12 +44,12 @@ SCORES = {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500, "3D-or-SBS": -10000}},
+        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150}},
     "sonarr": {n: {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500, "3D-or-SBS": -10000} for n in ("Anime 1080p", "TV 1080p")},
+        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150} for n in ("Anime 1080p", "TV 1080p")},
 }
 
 # Remux anywhere is how a 35 Mbps file gets back in; 2160p cannot play at all.
@@ -113,6 +113,31 @@ for p in get("radarr", "/api/v3/qualityprofile"):
     walk(p["items"])
     bad = sorted(want & allowed)
     check(not bad, f"radarr {p['name']} bans remux/4K", bad or None, "none allowed")
+
+print("\n=== quality ordering (WEBDL above Bluray) ===")
+# BluRay rips carry PGS bitmap subs off the disc; WEB-DL carries text. On a box
+# that cannot burn in subtitles without stalling, text beats marginal bitrate.
+for app, profs in (("radarr", ["Mobile 1080p"]), ("sonarr", ["Anime 1080p", "TV 1080p"])):
+    for p in get(app, "/api/v3/qualityprofile"):
+        if p["name"] not in profs:
+            continue
+        order = []
+
+        def flat(items):
+            for i in items:
+                q = i.get("quality")
+                order.append(q["name"] if q else i.get("name", ""))
+                if not q:
+                    flat(i.get("items", []))
+        flat(p["items"])
+        try:
+            web = order.index("WEB 1080p")
+            bd = order.index("Bluray-1080p")
+        except ValueError:
+            check(False, f"{app} {p['name']} ordering", "quality missing", "present"); continue
+        check(web > bd, f"{app} {p['name']} WEBDL above Bluray",
+              "Bluray higher" if web < bd else None, "WEBDL higher")
+        check(p.get("cutoff") == 1002, f"{app} {p['name']} cutoff=WEB 1080p", p.get("cutoff"), 1002)
 
 print("\n=== media management ===")
 for app in APPS:
