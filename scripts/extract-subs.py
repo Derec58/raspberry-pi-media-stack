@@ -69,6 +69,11 @@ BITMAP_CODECS = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}
 # Higher is better. A track with no title at all is fine -- it is usually the only one.
 GOOD_TITLE = re.compile(r"full|dialogue|complete|main", re.I)
 SIGNS_ONLY = re.compile(r"sign|song|karaoke|op/ed|forced", re.I)
+# A commentary track is text, English and often the ONLY text English track on a
+# disc rip whose real dialogue subs are PGS. Fight Club's remux had four of them
+# and the picker happily chose "English (Commentary #1)", producing a sidecar full
+# of "we ended up doing a reshoot of this". Never use one.
+COMMENTARY = re.compile(r"(?i)\bcommentar|\bdirector'?s?\b|\bcast\s*&|\bfilmmaker")
 SDH = re.compile(r"\bsdh\b|hearing", re.I)
 
 
@@ -102,6 +107,8 @@ def score_track(s):
         score -= 20          # usable, but prefer a clean dialogue track
     if SIGNS_ONLY.search(title):
         score -= 200         # signs-only: last resort, never over a dialogue track
+    if COMMENTARY.search(title):
+        return None          # never a substitute for dialogue subtitles
     if lang == "":
         score -= 10          # untagged language is a weaker signal than an explicit eng
     return score

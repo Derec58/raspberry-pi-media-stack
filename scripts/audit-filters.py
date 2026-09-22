@@ -44,12 +44,12 @@ SCORES = {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500}},
+        "Dual Audio": 500, "3D-or-SBS": -10000}},
     "sonarr": {n: {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500} for n in ("Anime 1080p", "TV 1080p")},
+        "Dual Audio": 500, "3D-or-SBS": -10000} for n in ("Anime 1080p", "TV 1080p")},
 }
 
 # Remux anywhere is how a 35 Mbps file gets back in; 2160p cannot play at all.
