@@ -30,3 +30,15 @@ sw_*.csv
 
 # Agent session settings, machine-specific
 .claude/
+
+# Personal collection data, deliberately untracked and purged from history.
+# These hold reading orders, buying plans and a personal comic collection; the
+# repo is public and linked from a portfolio, so it should show infrastructure.
+DC_Absolute.txt
+MARVEL_SWIMSUIT_SPECIALS.txt
+READING-ORDER-scarlet-witch.md
+scarlet_witch_reading_order*.txt
+sw_buying_plan.md
+sw_*.csv
+_match.json
+scripts/sync-kavita-reading-lists.py

@@ -102,7 +102,16 @@ CONTAINER_ROOT, HOST_ROOT = "/data", "/mnt/jellyfin"
 
 
 def load_sync_module():
-    """PLAN lives in a hyphenated filename, so it needs loading by path."""
+    """PLAN lives in a hyphenated filename, so it needs loading by path.
+
+    That script holds personal collection data and is deliberately untracked, so
+    a fresh clone will not have it. Fail with a clear message instead of an
+    ImportError traceback that looks like a bug.
+    """
+    if not os.path.exists(SYNC_SCRIPT):
+        sys.exit(f"reading-list script not present: {SYNC_SCRIPT}\n"
+                 "It is kept out of version control because it contains personal "
+                 "collection data. This report needs it to resolve the plan.")
     spec = importlib.util.spec_from_file_location("syncmod", SYNC_SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     sys.argv = [SYNC_SCRIPT]          # its argparse runs only under main()

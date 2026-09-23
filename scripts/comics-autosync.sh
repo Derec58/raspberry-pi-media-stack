@@ -30,9 +30,16 @@ while :; do
         echo "───── run $i  $(date '+%F %H:%M:%S')"
         ./scripts/verify-comics-library.py --quiet 2>&1 \
             | grep -vE '^\s*$' | sed 's/^/  verify: /'
-        ./scripts/sync-kavita-reading-lists.py 2>&1 \
-            | grep -E 'scanned|skipping scan|WARNING|issues resolved|^Scarlet|resolved [0-9]+' \
-            | sed 's/^/  sync: /'
+        # The reading-list sync holds personal collection data and is kept out of
+        # version control, so it may not exist in a fresh clone. Skip it cleanly
+        # rather than erroring out; verification above still runs.
+        if [ -x ./scripts/sync-kavita-reading-lists.py ]; then
+            ./scripts/sync-kavita-reading-lists.py 2>&1 \
+                | grep -E 'scanned|skipping scan|WARNING|issues resolved|resolved [0-9]+' \
+                | sed 's/^/  sync: /'
+        else
+            echo "  sync: skipped (reading-list script not present)"
+        fi
     } >>"$LOG" 2>&1
 
     [ "$CYCLES" -gt 0 ] && [ "$i" -ge "$CYCLES" ] && break
