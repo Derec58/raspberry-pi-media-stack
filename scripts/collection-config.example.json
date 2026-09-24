@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to collection-config.json and fill in your own values. The real file is gitignored because it describes a personal collection. Every key is optional; missing keys behave as empty.",
+
+  "collections": {
+    "_doc": "Named groups of ComicVine volume IDs that are owned as collected editions rather than tracked issue by issue. comics-status.py excludes these from its drift report.",
+    "Example Publisher Line": [
+      "100001",
+      "100002"
+    ]
+  },
+
+  "drift_ok": {
+    "_doc": "ComicVine volume ID -> why it is watchlisted but absent from the reading plan. Keeps the drift report quiet about deliberate choices.",
+    "100003": "covered by a collected edition",
+    "100004": "cut from the reading order on YYYY-MM-DD; files and watchlist row kept"
+  },
+
+  "untracked_ok": [
+    "_doc: library folder names the tracker deliberately does not follow, usually collected editions or one-shots with no ComicVine volume. Anything not tracked and not listed here is reported as a stray.",
+    "Example Collected Edition",
+    "Example One-Shot (2026)"
+  ]
+}

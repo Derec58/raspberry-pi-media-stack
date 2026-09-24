@@ -2,15 +2,15 @@
 """Audit the Mylar3 comics library for mis-filed and inconsistent downloads.
 
 Written after a real incident on 2026-08-17: Mylar3 matched a GetComics pack
-titled "Vision and the Scarlet Witch #1-12 (1985-1986)" against ComicVine
+titled "<Series> #1-12 (1985-1986)" against ComicVine
 volume 3155, which is the 1982 four-issue series. It did that because the pack's
 issue range (1-12) covers the target issues (1-4); the year mismatch did not
 block it. Nothing stopped the wrong 349MB of comics from being filed into the
 wrong series except catching it by hand.
 
 Series with sibling volumes sharing a name are the exposure here, and this
-reading order is full of them: four volumes called "Scarlet Witch", three called
-"Vision and the Scarlet Witch", plus Avengers, New Avengers, Excalibur and
+reading order is full of them: four volumes sharing one title, three sharing
+another, plus several long-running team books and
 Young Avengers.
 
 Checks performed:
@@ -42,20 +42,17 @@ HOST_ROOT = "/mnt/jellyfin"
 
 ARCHIVE_EXT = (".cbz", ".cbr", ".cb7")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import collection_config  # noqa: E402  (needs the path above)
+
 COMICS_ROOT = os.path.join(HOST_ROOT, "Comics")
 
-# Folders in the library that Mylar3 deliberately does not track. Collected
-# editions live here: an Epic Collection is one volume, not thirteen numbered
-# issues, so Mylar3 has nothing useful to say about it and the reading list
-# addresses it by folder instead (see PLAN in sync-kavita-reading-lists.py).
-# Anything in the library that is NOT tracked and NOT listed here is a stray.
-UNTRACKED_OK = {
-    "Avengers West Coast Epic Collection",
-    "Avengers - Nights of Wundagore",
-    # No ComicVine volume exists for this one-shot, so Mylar3 cannot track it.
-    # Hand-fetched and addressed by folder, like the collected editions above.
-    "Absolute Batman - Ark M Special (2026)",
-}
+# Folders the tracker deliberately does not follow: collected editions (an Epic
+# Collection is one volume, not thirteen numbered issues) and one-shots with no
+# ComicVine volume. Anything in the library that is NOT tracked and NOT listed
+# here is a stray. The list names a personal collection, so it lives in the
+# gitignored collection-config.json; see collection-config.example.json.
+UNTRACKED_OK = collection_config.untracked_ok()
 
 
 def host_path(container_path):
@@ -133,7 +130,7 @@ def main():
             )
 
     # ---- 1b. one release filling two different series ----------------------
-    # The year check cannot separate volumes whose runs overlap. Scarlet Witch
+    # The year check cannot separate volumes whose runs overlap. One title
     # Vol 3 (2023-2024) and Vol 4 (2024-2025) both number issues #1-10 and share
     # 2024, so a wrong match between them slips past a date comparison. But a
     # single GetComics page can only really belong to one volume, so the same

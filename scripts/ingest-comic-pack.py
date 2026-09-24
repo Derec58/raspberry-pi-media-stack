@@ -4,10 +4,10 @@
 Why not just drop the pack in Mylar3's download folder
 ------------------------------------------------------
 Because Mylar3 matches packs by issue RANGE and does not reliably check the
-year. On 2026-08-17 a "Vision and the Scarlet Witch #1-12 (1985-1986)" pack was
+year. On 2026-08-17 a "<Series> #1-12 (1985-1986)" pack was
 filed onto ComicID 3155, the *1982* four-issue volume, purely because the pack's
-range covered #1-4. This library has four series called "Scarlet Witch" and
-three called "Vision and the Scarlet Witch", so the exposure is constant.
+range covered #1-4. This library has four series sharing one title and
+three sharing another, so the exposure is constant.
 
 This script therefore never lets Mylar3 guess: it extracts only the issues asked
 for, into their own staging directory, then calls forceProcess with an explicit

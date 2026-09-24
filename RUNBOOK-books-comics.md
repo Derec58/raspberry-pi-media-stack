@@ -257,7 +257,7 @@ Watch `docker logs -f mylar3` while it runs to confirm it queries indexers.
 ### File renaming (enabled 2026-08-17)
 
 Scene releases carry inconsistent group tags and occasional typos. One arrived
-as `Sorceror Supreme 008` (misspelled) next to `Sorcerer Supreme 007`, and the
+as `Mystc Title 008` (misspelled) next to `Mystic Title 007`, and the
 group tag flipped between `(Shan-Empire)` and `(Lil-Empire)` mid-run. Mylar3 now
 normalises every filename from ComicVine metadata instead of keeping the release
 name:
@@ -269,8 +269,8 @@ zero_level    = True
 zero_level_n  = 00x
 ```
 
-Result: `Sorcerer Supreme 008 (2026).cbz`. `$Annual` is stripped automatically
-for non-annuals, and expands to `Annual` for the Scarlet Witch Annual, so one
+Result: `Mystic Title 008 (2026).cbz`. `$Annual` is stripped automatically
+for non-annuals, and expands to `Annual` for the Hero Solo Annual, so one
 format string covers both.
 
 Only `zero_level_n` is functional. `zero_level` is read solely to render the UI
@@ -295,7 +295,7 @@ curl -s "http://localhost:8090/manualRename?comicid=<COMICVINE_ID>"
 
 It matches on the exact filename stored in `issues.Location`, so it finds
 misspelled files too, then calls `forceRescan` to resync the database. Verified
-on 2026-08-17: 8 issues of Sorcerer Supreme and 2 of Scarlet Witch (2024)
+on 2026-08-17: 8 issues of Mystic Title and 2 of Hero Solo (2024)
 renamed, Mylar3 still reporting 8/8 and 2/10 Downloaded afterwards.
 
 **Do not trust the Preview Renamer.** The UI preview (`previewRename`) renders
@@ -326,8 +326,8 @@ Why it matters more than anything else here:
   `findit['status'] is True`, so a DDL hit means the two delayed torznab
   providers are never queried for that issue.
 - **DDL is the only provider actually producing results.** Every single grab on
-  2026-08-17 came from DDL(GetComics): Sorcerer Supreme #1-8, Scarlet Witch v4,
-  both Vision and the Scarlet Witch volumes. 1337x and The Pirate Bay returned
+  2026-08-17 came from DDL(GetComics): Mystic Title #1-8, Hero Solo v4,
+  both Hero Duo volumes. 1337x and The Pirate Bay returned
   nothing for comics all day.
 
 With DDL last, every issue paid roughly 4 minutes of failing torznab queries
@@ -368,8 +368,8 @@ every container under 1% CPU. The delay is a `time.sleep()`.
 This is the most dangerous failure mode in this setup, and it happened for real
 on 2026-08-17.
 
-Mylar3 searched for **Vision and the Scarlet Witch (1982)**, a 4 issue series,
-and matched a GetComics pack titled **"Vision and the Scarlet Witch #1-12
+Mylar3 searched for **Hero Duo (1982)**, a 4 issue series,
+and matched a GetComics pack titled **"Hero Duo #1-12
 (1985-1986)"**, which is the *other* volume. It accepted it because the pack's
 issue range (#1-12) covers the wanted issues (#1-4). The year mismatch did not
 block it. 349MB of the wrong comics was queued to be filed into the wrong
@@ -379,10 +379,9 @@ What saved it was luck: Vol 2 was next in the reading order, searched, found the
 same pack, and post-processed it correctly to Vol 2. The Vol 1 copy was left
 staged, still attributed to Vol 1.
 
-This reading order is full of the same exposure: four volumes named "Scarlet
-Witch" (1994, 2016, 2023, 2024), three named "Vision and the Scarlet Witch"
-(1982, 1985, 2025), plus Avengers, New Avengers, Excalibur and Young Avengers.
-Scarlet Witch Vol 3 (2023-2024) and Vol 4 (2024-2025) are the worst pair: same
+This reading order is full of the same exposure: four volumes named "Hero Solo" (1994, 2016, 2023, 2024), three named "Hero Duo"
+(1982, 1985, 2025), plus Avengers, New Avengers, Team Book and Young Avengers.
+Hero Solo Vol 3 (2023-2024) and Vol 4 (2024-2025) are the worst pair: same
 issue numbers #1-10 *and* overlapping years, so no date check can separate them.
 
 **Detect it** with the verifier (see below). **Prevent it** with a priority
@@ -394,9 +393,9 @@ Per-series, this pins Mylar3 to the exact release title a provider uses:
 
 ```bash
 curl -G 'http://localhost:8090/comic_config' \
-  --data-urlencode 'ComicID=3155' \
-  --data-urlencode 'com_location=/data/Comics/Vision and the Scarlet Witch (1982)' \
-  --data-urlencode 'alt_search=!!Vision and the Scarlet Witch Vol.1' \
+  --data-urlencode 'ComicID=<cvid>' \
+  --data-urlencode 'com_location=/data/Comics/Hero Duo (1982)' \
+  --data-urlencode 'alt_search=!!Hero Duo Vol.1' \
   --data-urlencode 'allow_packs=1'
 ```
 
@@ -405,8 +404,8 @@ is scanned for `!!`; only then is the alternate queried *before* the real series
 name. Without the prefix the primary name goes first and re-matches the wrong
 release. `##` separates multiple alternates.
 
-This fixed Vol 1: with `!!Vision and the Scarlet Witch Vol.1` set, Mylar3
-immediately found the correct `Vision and the Scarlet Witch Vol.1 #1-4
+This fixed Vol 1: with `!!Hero Duo Vol.1` set, Mylar3
+immediately found the correct `Hero Duo Vol.1 #1-4
 (1982-1983)` pack (169MB) instead of the 1985 one.
 
 Three cautions on `comic_config` (all confirmed by reading
@@ -446,8 +445,8 @@ Measured output was `8`, `0`, `42`. Three patterns behind that:
   only narrow the query. `Avengers Disassembled` returned 7 where
   `Avengers Disassembled (Complete)` returned 2.
 - **Word order can be reversed** from the ComicVine title. The real release is
-  `Avengers Origins- Quicksilver and the Scarlet Witch 01`, while the series is
-  catalogued as "Avengers Origins: Scarlet Witch & Quicksilver".
+  `Origins- Speedster and the Hero Solo 01`, while the series is
+  catalogued as "Origins: Hero Solo & Speedster".
 
 Shorter, and closer to how a release is actually named, wins. An alternate that
 returns fewer hits than the plain name is worse than no alternate at all, and it
@@ -458,7 +457,7 @@ Find the exact title a provider uses by searching it directly through the VPN:
 ```bash
 docker exec mylar3 sh -c "curl -s -x http://gluetun:8888 \
   'https://getcomics.org/?s=vision+and+the+scarlet+witch'" \
-  | grep -oiE 'Vision [&a-z ]*Scarlet Witch[^<\"]{0,40}' | sort -u
+  | grep -oiE 'Hero [&a-z ]*Duo[^<\"]{0,40}' | sort -u
 ```
 
 ### Verifying the library: scripts/verify-comics-library.py
@@ -485,7 +484,7 @@ dates, widened a year each way, **not** against `ComicYear`. Comparing to
 ships issues in 2025.
 
 `DUP-LINK` exists because the year check cannot separate overlapping volumes
-like Scarlet Witch Vol 3 and Vol 4. One GetComics page belongs to one volume, so
+like Hero Solo Vol 3 and Vol 4. One GetComics page belongs to one volume, so
 if it fed two comicids, one is misfiled.
 
 Self-test the checks against a scratch copy rather than live data:
@@ -504,7 +503,7 @@ nothing. Its files were named by date, with the issue number hidden in
 parentheses:
 
 ```
-Vision and the Scarlet Witch, 1982-12-00 (_04) (digital) (OkC.O.M.P.U.T.O.-Novus-HD).cbz
+Hero Duo, 1982-12-00 (_04) (digital) (OkC.O.M.P.U.T.O.-Novus-HD).cbz
 ```
 
 Mylar3 reads `1982-12-00` as the number, fails, logs only `this should have an
@@ -518,7 +517,7 @@ names only need to parse, because `rename_files = True` rewrites them anyway:
 cd "/mnt/jellyfin/downloads/completed/comics/<pack folder>/<inner folder>"
 for f in *.cbz; do
   n=$(echo "$f" | grep -oP '\(_\K[0-9]{2}(?=\))')
-  sudo mv -n "$f" "Vision and the Scarlet Witch ${n} (1982).cbz"
+  sudo mv -n "$f" "Hero Duo ${n} (1982).cbz"
 done
 
 KEY=$(sudo grep -oP '(?<=^api_key = ).*' config/mylar3/mylar/config.ini)
@@ -606,7 +605,7 @@ scripts/sync-kavita-reading-lists.py --no-scan   # skip the library scan
 
 Re-run as downloads land; each run rebuilds every list so late arrivals are
 inserted in the right position rather than appended. Verified on 2026-08-17:
-Vision and the Scarlet Witch Vol 1 arrived after Vol 2 was already listed, and
+Hero Duo Vol 1 arrived after Vol 2 was already listed, and
 the next run placed Vol 1's #1-4 ahead of Vol 2's #1-12 correctly. Idempotent,
 and list ids stay stable. Details in `READING-ORDER-scarlet-witch.md`. Key is
 `KAVITA_API_KEY` in `.env`.
@@ -651,7 +650,7 @@ curl -X POST 'http://localhost:5000/api/Library/scan?libraryId=2&force=true' \
 ### Kavita names series from the folder, not the filename
 
 Worth knowing before chasing filename bugs: Kavita took the typo'd
-`Sorceror Supreme 008` and still filed it under `Sorcerer Supreme (2026)`,
+`Mystc Title 008` and still filed it under `Mystic Title (2026)`,
 because the series name comes from the parent folder (`folder_format =
 $Series ($Year)`). Filename typos affect only the issue number parse, not
 series grouping. Renaming is still worth doing for consistency and correct
@@ -742,11 +741,11 @@ against an explicit ComicID:
 ```bash
 python3 scripts/ingest-comic-pack.py --dry-run \
     --archive '/mnt/jellyfin/downloads/manual-packs/<name>.zip' \
-    --comicid 18239 --issues 21-32          # always dry-run first
+    --comicid <cvid> --issues 21-32          # always dry-run first
 
 sudo python3 scripts/ingest-comic-pack.py \
     --archive '/mnt/jellyfin/downloads/manual-packs/<name>.zip' \
-    --comicid 18239 --issues 21-32
+    --comicid <cvid> --issues 21-32
 ```
 
 Four things it handles that will bite anyone doing this by hand:
@@ -866,7 +865,7 @@ skipping it cost real time.
    `max_active_torrents` was changed live without recording it, and could only
    be restored to an inferred default.
 4. **Never conclude absence from one probe.** Vary the name: series title, arc
-   title, collected-edition title, punctuation stripped. The West Coast Avengers
+   title, collected-edition title, punctuation stripped. The Regional Team
    run was called unobtainable for two days; both halves were sitting there as
    Epic Collections under their arc names. `scripts/find-comic-source.py`
    automates this.
@@ -924,7 +923,7 @@ issue number, which the range filter deliberately rejects.
 `PLAN` therefore accepts a segment addressed by Kavita folder instead:
 
 ```python
-("folder:Avengers West Coast Epic Collection", None),
+("folder:Regional Team Epic Collection", None),
 ```
 
 That takes every chapter of that Kavita series in Kavita's own sort order and
@@ -936,13 +935,13 @@ Mylar3 never needs to know they exist.
 
 In an anthology or one-shot collection every file is issue #1 of a *different*
 series, so the issue number cannot pick the right one. The Avengers Origins
-collection holds five #1s: Ant-Man, Luke Cage, Scarlet Witch & Quicksilver,
+collection holds five #1s: Hero A, Hero B, Hero Solo & Speedster,
 Thor, Vision. Use `--name-filter`:
 
 ```bash
 sudo python3 scripts/ingest-comic-pack.py \
     --archive '.../Avengers Origins Vol 1 Collection (2011).zip' \
-    --comicid 44148 --issues 1 --name-filter 'Scarlet Witch'
+    --comicid <cvid> --issues 1 --name-filter 'Hero Solo'
 ```
 
 #### The Annual collision: a right number on the wrong series
@@ -954,7 +953,7 @@ collide:
 | File in the pack | Parsed as | Should be |
 | --- | --- | --- |
 | `The Avengers Annual 016 (1987).cbz` | 16 | Avengers **Annual** #16, a different volume |
-| `Uncanny Avengers Annual 001 (2014).cbr` | 1 | the Annual, cvid 73421, not cvid 52880 |
+| `Uncanny Avengers Annual 001 (2014).cbr` | 1 | the Annual, cvid <cvid>, not cvid <cvid> |
 
 Both would have been filed onto the wrong issue of the wrong series. The
 parser cannot detect this — the number really is 16, it just belongs to another
@@ -991,14 +990,14 @@ reading order otherwise lives in three places - `PLAN`, the Mylar3 watchlist and
 `READING-ORDER-scarlet-witch.md` - which can disagree silently. That is how
 reading list 01 sat empty for two days without anyone noticing.
 
-Deliberate exceptions go in `DRIFT_OK`, with a reason. Both West Coast Avengers
+Deliberate exceptions go in `DRIFT_OK`, with a reason. Both Regional Team
 volumes are listed there: their issues exist only inside the Epic Collections,
 which `PLAN` addresses by Kavita folder, so they will never be referenced by
 CVID - but they stay watchlisted in case single scans ever surface.
 
 **Segments are scored against the issues they actually ask for.** An early
 version compared whole-series download counts to the size of a range and
-reported "14/4 held" for Excalibur #11-14. Per-issue status is what makes
+reported "14/4 held" for Team Book #11-14. Per-issue status is what makes
 `Avengers (1998)` show `500-503 -> 4/4` and `1-56 -> 0/56` correctly in the same
 run, since one volume appears in two places in the reading order.
 
@@ -1025,7 +1024,7 @@ them. The guard for this is on the ingest side:
 
 ```bash
 python3 scripts/ingest-comic-pack.py --dry-run --require-complete \
-    --from-dir <dir> --comicid 5297 --issues 1-22
+    --from-dir <dir> --comicid <cvid> --issues 1-22
 ```
 
 `--require-complete` exits non-zero when any requested issue is absent. **Leave
@@ -1142,9 +1141,9 @@ guessing.
   issues for week 31 and 99 issues for week 32 of 2026.
 - RSS was enabled, resumed, and force-run successfully. Log confirmed
   `[RSS-FEEDS] Successfully ran a forced RSS Check`.
-- Test series `Scarlet Witch (2024)` v4 (ComicVine ID 158459) was added via the
+- Test series `Hero Solo (2024)` v4 (ComicVine ID <cvid>) was added via the
   API. Status Active, 10 issues loaded, directory
-  `/mnt/jellyfin/Comics/Scarlet Witch (2024)` created with correct `112:122`
+  `/mnt/jellyfin/Comics/Hero Solo (2024)` created with correct `112:122`
   ownership inside Kavita's comics library.
 - Mylar3 egress verified on the VPN across all three HTTP paths: shell curl,
   Python `requests` (the DDL downloaders), and `urllib.request`. All returned
@@ -1154,18 +1153,18 @@ guessing.
 
 A complete download was proven, not simulated:
 
-1. Search found `Scarlet Witch (2024) #1` via DDL(GetComics).
+1. Search found `Hero Solo (2024) #1` via DDL(GetComics).
 2. GetComics offered mega, pixeldrain and mediafire mirrors.
 3. The mega mirror failed with `ETOOMANY` (too many concurrent IPs).
 4. Mylar3 automatically fell back to **mediafire** and downloaded 72 MB.
 5. Post-processing moved it to
-   `/data/Comics/Scarlet Witch (2024)/Scarlet Witch 001 (2024) (Digital) (Shan-Empire).cbz`,
+   `/data/Comics/Hero Solo (2024)/Hero Solo 001 (2024) (Digital) (Shan-Empire).cbz`,
    owned `112:feedbackd`.
 6. The download staging folder was left clean.
 7. Mylar3 marked issue 1 `Downloaded`, series now `Have 1 / Total 10`.
 8. **Kavita auto-detected it within about one minute** (folder scanned at
    21:51:30, post-processing finished 21:50:41) and indexed it as series
-   `Scarlet Witch (2024)`, volume 2024, chapter 1, **34 pages**.
+   `Hero Solo (2024)`, volume 2024, chapter 1, **34 pages**.
 
 Step 4 is the important one: the successful download came through
 **mediafire**, which is one of the modules that ignores Mylar3's own proxy
@@ -1527,9 +1526,9 @@ still need a decision, a restart, or a source that does not exist yet.
   keeping an eye on.
 - **[FIXED] A quarantined 350MB duplicate** at
   `/mnt/jellyfin/downloads/quarantine/`, the wrongly-attributed copy of the
-  1985 Vision and the Scarlet Witch pack. Deleted on approval, after confirming
+  1985 Hero Duo pack. Deleted on approval, after confirming
   the folder held nothing but that pack and that all 12 issues were already
-  correctly filed under `The Vision and the Scarlet Witch (1985)`. Confirm both
+  correctly filed under `The Hero Duo (1985)`. Confirm both
   of those before deleting any future quarantine.
 - **[OPEN] DuckDNS: resolved, working, but the updater is not on this Pi.** Checked
   2026-08-17: both `<JELLYFIN_HOST>` and `<SEERR_HOST>`
@@ -1562,7 +1561,7 @@ still need a decision, a restart, or a source that does not exist yet.
 - **[OPEN] Torrent indexer coverage for comics is thin.** Only 1337x (ID 13), The
   Pirate Bay (ID 8), and Bangumi Moe (ID 10) advertise category 7030
   (Books/Comics), and they are general-purpose public trackers with sparse,
-  dated comic content. A torrent search for `Scarlet Witch` returned only the
+  dated comic content. A torrent search for `Hero Solo` returned only the
   2023 volume. **DDL via GetComics was enabled on 2026-08-17 specifically to
   solve this** and it found the 2024 volume immediately. DDL is now the
   effective primary source for comics; the torrent indexers are a weak

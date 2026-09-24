@@ -27,6 +27,9 @@ import os
 import sqlite3
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import collection_config  # noqa: E402  (needs the path above)
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MYLAR_DB = os.path.join(REPO, "config", "mylar3", "mylar", "mylar.db")
 KAVITA_DB = os.path.join(REPO, "config", "kavita", "kavita.db")
@@ -34,7 +37,7 @@ SYNC_SCRIPT = os.path.join(REPO, "scripts", "sync-kavita-reading-lists.py")
 
 ARCHIVE_EXT = (".cbz", ".cbr", ".cb7")
 
-# Watchlisted series that no PLAN segment references ON PURPOSE. Both West Coast
+# Watchlisted series that no PLAN segment references ON PURPOSE. Some team-book
 # Avengers volumes are here because their issues exist only inside the Epic
 # Collections, which PLAN addresses by Kavita folder instead. They stay in the
 # watchlist so that if single scans ever surface, Mylar3 already knows the
@@ -48,56 +51,19 @@ DEFERRED = {
               "picks it up automatically if one ever appears.",
 }
 
-# Series watchlisted for a Kavita COLLECTION rather than the Scarlet Witch
+# Series watchlisted for a Kavita COLLECTION rather than the character
 # reading order. They are legitimately absent from PLAN - a collection is a flat
 # grouping with no reading order - so they must not be reported as drift, but
 # they should still be visible here rather than silently ignored.
-COLLECTIONS = {
-    "DC Absolute Universe": [
-        "160294",  # Absolute Batman
-        "160511",  # Absolute Wonder Woman
-        "160860",  # Absolute Superman
-        "162847",  # Absolute Flash
-        "162966",  # Absolute Martian Manhunter (finite: exactly 12)
-        "163145",  # Absolute Green Lantern
-        "172003",  # Absolute Green Arrow
-        "172741",  # Absolute Catwoman
-        "160186",  # DC All In Special
-        "164509",  # DC All In 2025 FCBD Special Edition
-        "167313",  # Absolute Evil
-        "168013",  # Absolute Batman 2025 Annual
-        "170538",  # Absolute Wonder Woman 2026 Annual
-        # Absolute Batman: Ark M Special has NO ComicVine volume, so Mylar3
-        # cannot track it. Hand-fetched into its own folder and added to the
-        # Kavita collection directly; allowlisted in verify-comics-library.py.
-    ],
-}
+# Collected editions owned as volumes rather than tracked issue by issue, and the
+# volumes deliberately absent from the reading plan. Both describe a personal
+# collection, so they live in the gitignored collection-config.json rather than in
+# source. See collection-config.example.json for the shape.
+COLLECTIONS = collection_config.collections()
 IN_COLLECTIONS = {cid for ids in COLLECTIONS.values() for cid in ids}
 
-# Cut from the reading order by the 2026-08-20 rebuild. Files stay on disk and
-# the watchlist rows stay, so restoring any of these is a one-line PLAN edit
-# with nothing to re-download. Recorded as C01-C04 in the reading order doc.
-CUT_2026_08_20 = (
-    "cut from the reading order 2026-08-20; files kept on disk and the "
-    "watchlist row kept so it can be restored without re-adding the series"
-)
+DRIFT_OK = collection_config.drift_ok()
 
-DRIFT_OK = {
-    "18494": "Avengers West Coast - covered by the Epic Collections",
-    "3521": "West Coast Avengers - covered by the Epic Collections",
-    # C01: ~68 issues of ensemble filler with no Wanda arc. Note cvid 7084 is
-    # still referenced by PLAN for #500-503 (entry 19), so only the #1-56
-    # segment went; the volume itself is not drift.
-    "11015": f"Avengers Forever - {CUT_2026_08_20}",
-    # C02: the Scarlet Witch in this arc is Loki in disguise, not Wanda.
-    "18239": f"Mighty Avengers #21-23, #27-31 - {CUT_2026_08_20}",
-    # C03: Wanda's total presence is a two-panel flashback in the Special.
-    "11870": f"Young Avengers - {CUT_2026_08_20}",
-    # C03 also retires the standing "parked" item: the Special was deferred
-    # because it exists only inside a ~600MB collected edition duplicating
-    # #1-12. With Young Avengers cut, that trade-off no longer needs making.
-    "29511": f"Young Avengers Special - {CUT_2026_08_20}",
-}
 CONTAINER_ROOT, HOST_ROOT = "/data", "/mnt/jellyfin"
 
 
@@ -141,7 +107,7 @@ def mylar_series():
             "SELECT Status, COUNT(*) FROM issues WHERE ComicID=? GROUP BY Status", (cid,))}
         # Per-issue status, so a partial-range segment can be scored against the
         # issues it actually asked for. Counting whole-series downloads against a
-        # range size reported nonsense like "14/4 held" for Excalibur #11-14.
+        # range size reported nonsense like "14/4 held" for a #11-14 range.
         issues = []
         for num, status in db.execute(
                 "SELECT Issue_Number, Status FROM issues WHERE ComicID=?", (cid,)):

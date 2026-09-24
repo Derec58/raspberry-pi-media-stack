@@ -4,7 +4,7 @@
 Why this exists
 ---------------
 Twice now, concluding "not available" from a single search was wrong and cost
-real time. The 1980s West Coast Avengers run was called unobtainable for two
+real time. A 1980s team-book run was called unobtainable for two
 days: searches were run for the series name and for individual issue numbers,
 but never for the arc titles, under which both halves were sitting the whole
 time as Epic Collections.
@@ -19,16 +19,16 @@ absence rather than "I guessed the wrong noun".
 
 Known title conventions, all of which have bitten:
   - apostrophes are dropped:  "Childrens Crusade", not "Children's Crusade"
-  - "&" is spelled out:       "Scarlet Witch and Quicksilver"
-  - separators are en dashes: "X-Men - The Trial Of Magneto"
+  - "&" is spelled out:       "<Hero> and <Hero>"
+  - separators are en dashes: "<Team> - The Trial Of <Villain>"
   - runs are ranges:          "#1 - 36 (2007-2010)"
-  - a padded issue number matches nothing: "scarlet witch 006" -> 0 results
+  - a padded issue number matches nothing: "<series> 006" -> 0 results
 
 Runs inside the mylar3 container so it inherits HTTP_PROXY and searches over the
 VPN:
     docker cp scripts/find-comic-source.py mylar3:/tmp/find.py
-    docker exec mylar3 python3 /tmp/find.py "scarlet witch" --year 2016
-    docker exec mylar3 python3 /tmp/find.py "west coast avengers" --arc "vision quest"
+    docker exec mylar3 python3 /tmp/find.py "<series name>" --year 2016
+    docker exec mylar3 python3 /tmp/find.py "<series name>" --arc "<story arc>"
 """
 
 import argparse
@@ -80,7 +80,7 @@ def variants(title, year=None, arc=None, issue=None):
     if arc:
         out.append(arc)
         out.append(f"{base} {arc}")
-    # Collected-edition forms: the ones that found the West Coast Avengers run.
+    # Collected-edition forms: the ones that found the 1980s team-book run.
     out.append(f"{base} epic collection")
     out.append(f"{base} tpb")
     out.append(f"{base} complete collection")
