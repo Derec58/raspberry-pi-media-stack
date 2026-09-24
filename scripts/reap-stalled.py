@@ -59,7 +59,8 @@ def qbit_states():
         ts = json.loads(out.stdout)
     except Exception:
         return None
-    return {t["name"]: (t.get("state"), t.get("num_seeds", 0), t.get("progress", 0.0))
+    return {t["name"]: (t.get("state"), t.get("num_seeds", 0), t.get("progress", 0.0),
+                        t.get("num_leechs", 0))
             for t in ts}
 
 
@@ -102,7 +103,8 @@ def main():
             hrs = age_hours(r.get("added"))
             if hrs < args.hours:
                 continue
-            st_, seeds, prog = (qb or {}).get(r.get("title", ""), (None, None, None))
+            st_, seeds, prog, peers = (qb or {}).get(r.get("title", ""),
+                                                     (None, None, None, None))
             if qb is None:
                 # qBittorrent unreachable: fall back to the old heuristic but only
                 # for items far past the window, to avoid killing queued torrents.
@@ -110,8 +112,13 @@ def main():
                 if size - (r.get("sizeleft") or 0) <= 0 and hrs >= args.hours * 4:
                     dead.append((r, hrs, "no qbit; 0 bytes"))
                 continue
-            if st_ in DEAD_STATES and prog == 0.0:
-                dead.append((r, hrs, f"{st_}, {seeds} seeds"))
+            # Progress alone is not the test. One download sat at 93.6% with zero
+            # seeds and an ETA of 100 days, which the old "prog == 0.0" rule left
+            # alone forever. A stalled torrent with no seeds is dead wherever it
+            # stopped. Peers are still checked, because a swarm with leechers but
+            # no seeds can occasionally finish.
+            if st_ in DEAD_STATES and not seeds and not peers:
+                dead.append((r, hrs, f"{st_} at {prog*100:.1f}%, no seeds or peers"))
 
         print(f"  {app}: {len(recs)} queued, {len(dead)} stalled >= {args.hours}h")
         for r, hrs, why in dead:
