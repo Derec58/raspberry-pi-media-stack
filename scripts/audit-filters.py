@@ -34,7 +34,10 @@ SIZES = {
     "radarr": {"Bluray-1080p": (20, 95, 110),
                "WEBDL-1080p":  (20, 95, 100),
                "WEBRip-1080p": (20, 95, 100)},
-    "sonarr": {"Bluray-1080p": (4, 95, 130)},
+    "sonarr": {"Bluray-1080p":  (4, 95, 110),
+               "WEBDL-1080p":   (4, 95, 110),
+               "WEBRip-1080p":  (4, 95, 110),
+               "HDTV-1080p":    (4, 95, 110)},
 }
 
 # HDR at -10000 sits below minFormatScore (-1000), so it is an effective ban:
@@ -44,12 +47,12 @@ SCORES = {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150}},
+        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150, "Audio-Description": -10000, "Non-Latin-Title": -10000, "VC1": -10000}},
     "sonarr": {n: {
         "AV1": -500, "Hi10P": -500, "HEVC-x265": -300, "HDR-or-DV": -10000,
         "Lossless-Audio": -100, "Opus Audio": -50, "Multi-Subs": 100,
         "Text-Subs-Likely": 150, "English Audio": 300, "Chinese Audio": 400,
-        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150} for n in ("Anime 1080p", "TV 1080p")},
+        "Dual Audio": 500, "3D-or-SBS": -10000, "Hardcoded-Subs": -10000, "Upscaled": -10000, "Multi-File-Bundle": -10000, "Foreign-Dub-Only": -10000, "Cam-Laundered": -10000, "Sample": -10000, "HEVC-10bit": -150, "Audio-Description": -10000, "Non-Latin-Title": -10000, "VC1": -10000} for n in ("Anime 1080p", "TV 1080p")},
 }
 
 # Remux anywhere is how a 35 Mbps file gets back in; 2160p cannot play at all.
@@ -138,6 +141,29 @@ for app, profs in (("radarr", ["Mobile 1080p"]), ("sonarr", ["Anime 1080p", "TV 
         check(web > bd, f"{app} {p['name']} WEBDL above Bluray",
               "Bluray higher" if web < bd else None, "WEBDL higher")
         check(p.get("cutoff") == 1002, f"{app} {p['name']} cutoff=WEB 1080p", p.get("cutoff"), 1002)
+
+print("\n=== Sonarr ignored terms must be word-bounded ===")
+# A bare "TS" is a case-insensitive SUBSTRING in Sonarr, so it matched "Jujutsu"
+# (J-u-j-u-TS-u) and rejected 151 of 189 releases for one episode. HDTS and
+# TELESYNC already cover real cam rips. Anything this short must be a /\bregex\b/.
+SHORT_RISKY = ("TS", "CAM", "HC", "AD", "DV")
+for rp in get("sonarr", "/api/v3/releaseprofile"):
+    for term in (rp.get("ignored") or []):
+        bare = term.upper()
+        risky = bare in SHORT_RISKY
+        check(not risky, f"sonarr ignored term {term!r} is word-bounded",
+              "bare substring" if risky else None, "/\\bTERM\\b/ regex form")
+
+print("\n=== 1080p bitrate ceilings stay under 15 Mbps ===")
+for app in APPS:
+    for q in get(app, "/api/v3/qualitydefinition"):
+        n = q["quality"]["name"]
+        if "1080p" not in n:
+            continue
+        mx = q.get("maxSize")
+        mbps = (mx * 8 / 60) if mx else None
+        check(mbps is not None and mbps <= 15.0, f"{app} {n} bitrate cap",
+              f"{mbps:.1f} Mbps" if mbps else "UNCAPPED", "<= 15 Mbps")
 
 print("\n=== indexer seeder floor ===")
 # minimumSeeders defaulted to 1 on all 16 indexers, so RSS and Seerr requests --
